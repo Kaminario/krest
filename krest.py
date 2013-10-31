@@ -86,6 +86,8 @@ class EndPoint(object):
         else:
             raw = False
         headers = {'content-type': 'application/json'}
+        if hasattr(self.ReqCfg, "headers"):
+            headers.update(self.ReqCfg.headers)
         kwargs.update(self.req_cfg.__dict__)
         rv = self.session.request(method, endpoint, auth=self.auth, verify=self.ssl_validate, headers=headers, **kwargs)
         rv.raise_for_status()

@@ -1,6 +1,7 @@
-from distutils.core import setup
+from setuptools import setup
 
-setup(name='foo',
-      version='1.0',
-      py_modules=['foo'],
+setup(name='krest',
+      version='0.1',
+      py_modules=['krest'],
+      install_requires=["requests >= 2.0.0"],
       )
