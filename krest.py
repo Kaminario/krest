@@ -27,9 +27,11 @@ class KRestJSONEncoder(json.JSONEncoder):
 
 logger = logging.getLogger("krest")
 
+
 class EndPoint(object):
 
     api_prefix = "/api/v2"
+    full_endpoint = "%s/%s" % (api_prefix, "__full")
 
     class ReqCfg(object):
         pass
@@ -76,27 +78,20 @@ class EndPoint(object):
     #noinspection PyArgumentList
     @exception_wrapper
     def _request(self, method, endpoint, **kwargs):
-        headers = {'content-type': 'application/json'}
         if "data" in kwargs:
             kwargs["data"] = json.dumps(kwargs["data"], cls=KRestJSONEncoder)
+        if "raw" in kwargs:
+            raw = kwargs["raw"]
+            del kwargs["raw"]
+        else:
+            raw = False
+        headers = {'content-type': 'application/json'}
         kwargs.update(self.req_cfg.__dict__)
-        rv = method(endpoint, auth=self.auth, verify=self.ssl_validate, headers=headers, **kwargs)
+        rv = self.session.request(method, endpoint, auth=self.auth, verify=self.ssl_validate, headers=headers, **kwargs)
         rv.raise_for_status()
-        if rv.content:
+        if rv.content and not raw:
             rv = rv.json()
         return rv
-
-    def _get(self, endpoint):
-        return self._request(self.session.get, endpoint)
-
-    def _post(self, endpoint, **kwargs):
-        return self._request(self.session.post, endpoint, **kwargs)
-
-    def _patch(self, endpoint, **kwargs):
-        return self._request(self.session.patch, endpoint, **kwargs)
-
-    def _delete(self, endpoint):
-        return self._request(self.session.delete, endpoint)
 
     def _resource_url(self, resource_type):
         endpoint = self.api_prefix + self.resources[resource_type]
@@ -106,24 +101,24 @@ class EndPoint(object):
         return "%s/%s" % (self._resource_url(resource_type), id)
 
     def get(self, resource_type, id):
-        rv = self._get(self._obj_url(resource_type, id))
+        rv = self._request("GET", self._obj_url(resource_type, id))
         ro = RestObject(self, resource_type, **rv)
         return ro
 
     def post(self, ro):
-        rv = self._post(self._resource_url(ro._resource_type), data=ro._current)
+        rv = self._request("POST", self._resource_url(ro._resource_type), data=ro._current)
         ro._update(**rv)
         return ro
 
     def patch(self, ro):
         if not ro._changed:
             return
-        rv = self._patch(ro._obj_url, data=ro._changed)
+        rv = self._request("PATCH", ro._obj_url, data=ro._changed)
         ro._update(**rv)
         return ro
 
     def delete(self, ro):
-        self._delete(ro._obj_url)
+        self._request("DELETE", ro._obj_url)
 
     def new(self, resource_type, **attrs):
         if resource_type not in self.resources:
@@ -133,7 +128,7 @@ class EndPoint(object):
     def discover(self):
         self.resources = dict()
         self.resource_endpoints = dict()
-        data = self._get(urlparse.urljoin(self.base_url, self.api_prefix))
+        data = self._request("GET", urlparse.urljoin(self.base_url, self.api_prefix))
         for k, v in data["resources"].items():
             self.resources[k] = v["url"]
             self.resource_endpoints[v["url"]] = k
@@ -141,13 +136,23 @@ class EndPoint(object):
     def search(self, resource_type, **query):
         url = self._resource_url(resource_type)
         url += "?%s" % urllib.urlencode(query)
-        data = self._get(url)
+        data = self._request("GET", url)
         new_hits = list()
         for hit in data["hits"]:
             new_hits.append(RestObject(self, resource_type, **hit))
         data["hits"] = new_hits
-        rs = ResultSet(data["hits"], data["total"], data["limit"], data["offset"], resource_type, query)
+        rs = ResultSet(self, resource_type, data, query)
         return rs
+
+    def dump_all(self, fp, pretty=False, read_chunk=8192):
+        """Dumps all objects in raw JSON to a provided file descriptor"""
+        url = urlparse.urljoin(self.base_url, self.full_endpoint)
+        if pretty:
+            sep = "&" if "?" in url else "?"
+            url = "%s%s__pretty" % (url, sep)
+        r = self._request("GET", url, raw=True, stream=True)
+        for chunk in r.iter_content(read_chunk):
+            fp.write(chunk)
 
 
 class RestObjectProxy(object):
@@ -218,16 +223,43 @@ class RestObject(object):
 class ResultSet(object):
     """
     Simple object for working with results set.
-    We can enhace it later to support result chunks iteration, etc
     """
-    def __init__(self, hits, total, limit, offset, resource_type, query):
-        self.hits = hits
-        self.total = total
-        self.limit = limit
-        self.offset = offset
+    def __init__(self, ep, resource_type, data, query):
+        self.hits = data["hits"]
+        self.total = data["total"]
+        self.limit = data.get("limit", len(self.hits))
+        self.offset = data.get("offset", 0)
+        self.autofetch = False
         self._resource_type = resource_type
         self._query = query
+        self._ep = ep
+        self._current_hit_index = 0
 
     def delete_all(self):
         for hit in self.hits:
             hit.delete()
+
+    def __iter__(self):
+        self._current_hit_index = 0
+        return self
+
+    def next(self):
+        if self._current_hit_index == len(self.hits):
+            if not self.autofetch:
+                raise StopIteration
+            self.next_chunk()
+            if not self.hits:
+                raise StopIteration
+        rv = self.hits[self._current_hit_index]
+        self._current_hit_index += 1
+        return rv
+
+    def next_chunk(self):
+        if "__offset" in self._query:
+            self._query["__offset"] += self.limit
+        else:
+            self._query["__offset"] = self.limit
+        rs = self._ep.search(self._resource_type, **self._query)
+        af = self.autofetch
+        self.__dict__.update(rs.__dict__)
+        self.autofetch = af
