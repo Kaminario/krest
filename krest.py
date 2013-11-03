@@ -42,7 +42,7 @@ class EndPoint(object):
         not_reachable_timeout = 600
         not_reachable_pause = 20
 
-    def __init__(self, k2_addr, username, password, ssl_validate=True):
+    def __init__(self, k2_addr, username, password, ssl_validate=True, autodiscover=True):
         self.ssl_validate = ssl_validate
         self.base_url = "https://%s" % k2_addr
         self.auth = (username, password)
@@ -51,7 +51,8 @@ class EndPoint(object):
         self.req_cfg = self.ReqCfg()
         self.retry_cfg = self.RetryCfg()
 
-        self.discover()
+        if autodiscover:
+            self.discover()
 
     def exception_wrapper(func):
         @wraps(func)
@@ -62,15 +63,20 @@ class EndPoint(object):
                 try:
                     return func(self, *args, **kwargs)
                 except ConnectionError, err:
+                    logger.warn("Connection Error: %s", str(err))
                     if self.retry_cfg.connect_errors:
                         retry = True
                 except HTTPError, err:
+                    logger.warn("HTTP Error: %s", str(err))
                     if self.retry_cfg.http_errors:
                         retry = True
                 except Exception, err:
+                    logger.warn("Error: %s", str(err))
                     retry = False
                 if retry:
+                    logger.warn("Sleeping for %s seconds", self.retry_cfg.not_reachable_pause)
                     time.sleep(self.retry_cfg.not_reachable_pause)
+                    logger.warn("Retrying")
                 else:
                     raise err
         return wrapped
