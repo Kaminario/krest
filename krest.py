@@ -31,7 +31,6 @@ logger = logging.getLogger("krest")
 class EndPoint(object):
 
     api_prefix = "/api/v2"
-    full_endpoint = "%s/%s" % (api_prefix, "__full")
 
     class ReqCfg(object):
         pass
@@ -43,6 +42,8 @@ class EndPoint(object):
         not_reachable_pause = 20
 
     def __init__(self, k2_addr, username, password, ssl_validate=True, autodiscover=True):
+        self.full_endpoint = "%s/%s" % (self.api_prefix, "__full")
+
         self.ssl_validate = ssl_validate
         self.base_url = "https://%s" % k2_addr
         self.auth = (username, password)
