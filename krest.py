@@ -106,6 +106,9 @@ class EndPoint(object):
         endpoint = self.api_prefix + self.resources[resource_type]
         return urlparse.urljoin(self.base_url, endpoint)
 
+    def _obj_ref(self, resource_type, id):
+        return "%s/%s" % (self.resources[resource_type], id)
+
     def _obj_url(self, resource_type, id):
         return "%s/%s" % (self._resource_url(resource_type), id)
 
@@ -142,7 +145,15 @@ class EndPoint(object):
             self.resources[k] = v["url"]
             self.resource_endpoints[v["url"]] = k
 
+    def _serialize_query_objects(self, query):
+        for k, v in query.items():
+            if isinstance(v, RestObject):
+                del query[k]
+                k = k + ".ref"
+                query[k] = v._obj_ref
+
     def search(self, resource_type, **query):
+        self._serialize_query_objects(query)
         url = self._resource_url(resource_type)
         url += "?%s" % urllib.urlencode(query)
         data = self._request("GET", url)
@@ -219,6 +230,10 @@ class RestObject(object):
 
     def __repr__(self):
         return self.__str__()
+
+    @property
+    def _obj_ref(self):
+        return self._ep._obj_ref(self._resource_type, self.id)
 
     @property
     def _obj_url(self):
