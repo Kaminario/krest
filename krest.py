@@ -12,10 +12,13 @@ import time
 
 # Enabling logging in your krest application
 # import krest
-# import logging
+#import logging
 #logging.addHandler(km_log_handler)
 #logging.getLogger("krest").setLevel(logging.DEBUG)
 #logging.getLogger("request").setLevel(logging.DEBUG)
+
+#TODO: Parse errors properly
+#TODO: Don't retry on Bad Request errors
 
 
 class KRestJSONEncoder(json.JSONEncoder):
@@ -87,6 +90,7 @@ class EndPoint(object):
     def _request(self, method, endpoint, **kwargs):
         if "data" in kwargs:
             kwargs["data"] = json.dumps(kwargs["data"], cls=KRestJSONEncoder)
+            logger.debug("Request data: %s", kwargs["data"])
         if "raw" in kwargs:
             raw = kwargs["raw"]
             del kwargs["raw"]
@@ -176,15 +180,29 @@ class EndPoint(object):
 
 
 class RestObjectProxy(object):
-    def __init__(self, attr_name, ep, ref):
-        self.ep = ep
-        (self.resource_endpoint, _, self.id) = ref["ref"].rpartition("/")
-        self.resource_type = self.ep.resource_endpoints[self.resource_endpoint]
-        self.attr_name = attr_name
+    def __init__(self, ep, ref):
+        self._ep = ep
+        (self._resource_endpoint, _, self.id) = ref["ref"].rpartition("/")
+        self.id = int(self.id)
+        self._resource_type = self._ep.resource_endpoints[self._resource_endpoint]
 
     def __call__(self):
-        ro = self.ep.get(self.resource_type, self.id)
+        ro = self._ep.get(self._resource_type, self.id)
         return ro
+
+    def __eq__(self, other, shallow=None):
+        # "shallow" parameter is supported for compatability -
+        # proxies can only be compared in shallow mode
+        if not isinstance(other, (RestObject, RestObjectProxy)):
+            return False
+        if self._resource_type != other._resource_type:
+            return False
+        if not hasattr(other, "id"):
+            return False
+        return self.id == other.id
+
+    def __ne__(self, other):
+        return not self == other
 
 
 class RestObject(object):
@@ -203,6 +221,12 @@ class RestObject(object):
     def delete(self):
         return self._ep.delete(self)
 
+    def refresh(self):
+        if not hasattr(self, "id"):
+            return
+        new_obj = self._ep.get(self._resource_type, self.id)
+        self._update(**new_obj._current)
+
     def __setattr__(self, attr, val):
         if not attr.startswith("_"):
             self._changed[attr] = self._current[attr] = val
@@ -220,7 +244,7 @@ class RestObject(object):
         self._current = dict()
         for k, v in kwargs.items():
             if isinstance(v, dict) and "ref" in v:
-                self._current[k] = RestObjectProxy(k, self._ep, v)
+                self._current[k] = RestObjectProxy(self._ep, v)
             else:
                 self._current[k] = v
         self._changed = dict()
@@ -241,7 +265,34 @@ class RestObject(object):
 
     @property
     def _ref(self):
-        return {"ref": "/%s/%s" % (self._resource_type, self.id)}
+        return {"ref": self._obj_ref}
+
+    def __eq__(self, other, shallow=False):
+        if not isinstance(other, (RestObject, RestObjectProxy)):
+            return False
+
+        if self._resource_type != other._resource_type:
+            return False
+
+        if shallow:
+            if not hasattr(self, "id") or not hasattr(other, "id"):
+                return False
+            return self.id == other.id
+
+        if set(self._current.keys()).symmetric_difference(other._current.keys()):
+            return False
+
+        for k, v in self._current.items():
+            o_v = other._current[k]
+            if isinstance(v, RestObject) or isinstance(o_v, RestObject):
+                if not v.__eq__(o_v, shallow=True):
+                    return False
+            elif v != o_v:
+                return False
+        return True
+
+    def __ne__(self, other):
+        return not self == other
 
 
 class ResultSet(object):
