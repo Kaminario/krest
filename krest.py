@@ -31,6 +31,7 @@ class KRestJSONEncoder(json.JSONEncoder):
 
 
 logger = logging.getLogger("krest")
+logger.setLevel(logging.DEBUG)
 
 
 class EndPoint(object):
@@ -79,6 +80,7 @@ class EndPoint(object):
                         retry = True
                 except Exception, err:
                     logger.error("Error: %s", str(err))
+                    retry = False
                 if retry:
                     logger.error("Sleeping for %s seconds", self.retry_cfg.not_reachable_pause)
                     time.sleep(self.retry_cfg.not_reachable_pause)
@@ -90,6 +92,7 @@ class EndPoint(object):
     #noinspection PyArgumentList
     @exception_wrapper
     def _request(self, method, endpoint, **kwargs):
+        logger.info("Sending method %s with data: %s" % (str(method), str(endpoint)))
         if "data" in kwargs:
             kwargs["data"] = json.dumps(kwargs["data"], cls=KRestJSONEncoder)
             logger.debug("Request data: %s", kwargs["data"])
