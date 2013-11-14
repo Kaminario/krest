@@ -64,23 +64,23 @@ class EndPoint(object):
             start_time = time.time()
             retry = True
             while retry and time.time() - start_time < self.retry_cfg.not_reachable_timeout:
+                retry = False
                 try:
                     return func(self, *args, **kwargs)
                 except ConnectionError, err:
-                    logger.warn("Connection Error: %s", str(err))
+                    logger.error("Connection Error: %s", str(err))
                     if self.retry_cfg.connect_errors:
                         retry = True
                 except HTTPError, err:
-                    logger.warn("HTTP Error: %s", str(err))
+                    logger.error("HTTP Error: %s", str(err))
                     if self.retry_cfg.http_errors:
                         retry = True
                 except Exception, err:
-                    logger.warn("Error: %s", str(err))
-                    retry = False
+                    logger.error("Error: %s", str(err))
                 if retry:
-                    logger.warn("Sleeping for %s seconds", self.retry_cfg.not_reachable_pause)
+                    logger.error("Sleeping for %s seconds", self.retry_cfg.not_reachable_pause)
                     time.sleep(self.retry_cfg.not_reachable_pause)
-                    logger.warn("Retrying")
+                    logger.error("Retrying")
                 else:
                     raise err
         return wrapped
@@ -104,6 +104,7 @@ class EndPoint(object):
         rv.raise_for_status()
         if rv.content and not raw:
             rv = rv.json()
+        logger.debug("Returned value is: %s", rv)
         return rv
 
     def _resource_url(self, resource_type):
