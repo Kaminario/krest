@@ -8,7 +8,7 @@ if [[ "$ver" == "" ]]; then
 	exit 1
 fi
 
-sed -i -r 's/^(__version__ = )[0-9]+.[0-9]+.[0-9]+/\1'$ver'/' krest.py
+sed -i -r 's/^(__version__ = ")[0-9]+.[0-9]+.[0-9]+/\1'$ver'/' krest.py
 sed -i -r 's/^(Version: +)[0-9]+\.[0-9]+\.[0-9]+/\1'$ver'/' krest.spec
 sed -i -r 's/(version=")[0-9]+\.[0-9]+\.[0-9]+/\1'$ver'/' setup.py
 
