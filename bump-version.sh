@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e 
+
 ver=$1
 if [[ "$ver" == "" ]]; then
 	echo "usage: $0 <new version>"
