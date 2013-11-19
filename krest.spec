@@ -1,7 +1,7 @@
 %global pypi_name krest
 
 Name:           python-%{pypi_name}
-Version:        0.1.5
+Version:        0.1.6
 Release:        1%{?dist}
 Summary:        Python client for Kaminario K2 REST interface
 
