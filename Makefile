@@ -8,6 +8,8 @@ TARBALL = $(TARBALL_DIR).tar.gz
 SPEC_FILE_NAME = krest.spec
 RPMBUILD = /usr/bin/rpmbuild
 
+all: rpm
+
 tarball:
 	tar --exclude .git --exclude $(TARBALL) --transform='s|^\.|krest-$(KREST_VERSION)|' -zcvf $(TARBALL) .
 
@@ -22,8 +24,7 @@ rpm_clean:
 	rm -rf $(TARBALL_DIR) RPMS tmp
 	
 clean: rpm_clean
-	rm -rf $(TABALL)
+	rm -rf $(TARBALL)
 
-all: rpm
 
 .PHONY: all rpm clean rpm_clean tarball
