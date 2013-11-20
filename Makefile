@@ -11,7 +11,10 @@ RPMBUILD = /usr/bin/rpmbuild
 all: rpm
 
 tarball:
-	tar --exclude .git --exclude $(TARBALL) --transform='s|^\.|krest-$(KREST_VERSION)|' -zcvf $(TARBALL) .
+	touch $(TARBALL)  # to stop tar complaining about . being changed while reading
+	tar --exclude .git --exclude $(TARBALL) \
+		--transform='s|^\.|krest-$(KREST_VERSION)|' \
+		-zcvf $(TARBALL) .
 
 rpm: tarball
 	${RPMBUILD} -bb ${SPEC_FILE_NAME} \
