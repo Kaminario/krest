@@ -10,7 +10,7 @@ RPMBUILD = /usr/bin/rpmbuild
 
 all: rpm
 
-tarball:
+tarball: clean
 	touch $(TARBALL)  # to stop tar complaining about . being changed while reading
 	tar --exclude .git --exclude $(TARBALL) \
 		--transform='s|^\.|krest-$(KREST_VERSION)|' \
