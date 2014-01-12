@@ -31,7 +31,6 @@ class KRestJSONEncoder(json.JSONEncoder):
 
 
 logger = logging.getLogger("krest")
-logger.setLevel(logging.DEBUG)
 
 
 class EndPoint(object):
@@ -43,7 +42,6 @@ class EndPoint(object):
 
     class RetryCfg(object):
         connect_errors = True
-        http_errors = False
         not_reachable_timeout = 600
         not_reachable_pause = 20
 
@@ -66,7 +64,7 @@ class EndPoint(object):
         def wrapped(self, *args, **kwargs):
             start_time = time.time()
             retry = True
-            while retry and time.time() - start_time < self.retry_cfg.not_reachable_timeout:
+            while retry:
                 retry = False
                 try:
                     return func(self, *args, **kwargs)
@@ -75,13 +73,21 @@ class EndPoint(object):
                     if self.retry_cfg.connect_errors:
                         retry = True
                 except HTTPError, err:
-                    logger.error("HTTP Error: %s", str(err))
-                    if self.retry_cfg.http_errors:
+                    err_str = str(err)
+                    status_code = err.response.status_code
+                    logger.error("HTTP Error: %s (response-status_code = %d)", err_str, status_code)
+                    if (400 <= status_code) and (status_code <= 499):
+                        logger.error("Managed error - Not retrying...")
+                        retry = False
+                    elif (500 <= status_code) and (status_code <= 599):
+                        logger.error("Unmanaged error - Going to retry...")
+                        retry = True
+                    else:
+                        logger.error("Unknown error - Going to retry...")
                         retry = True
                 except Exception, err:
                     logger.error("Error: %s", str(err))
-                    retry = False
-                if retry:
+                if retry and time.time() - start_time < self.retry_cfg.not_reachable_timeout:
                     logger.error("Sleeping for %s seconds", self.retry_cfg.not_reachable_pause)
                     time.sleep(self.retry_cfg.not_reachable_pause)
                     logger.error("Retrying")
@@ -92,10 +98,10 @@ class EndPoint(object):
     #noinspection PyArgumentList
     @exception_wrapper
     def _request(self, method, endpoint, **kwargs):
-        logger.info("Sending method %s with data: %s" % (str(method), str(endpoint)))
+        logger.info("Method: %s - Sending: %s" % (str(method), str(endpoint)))
         if "data" in kwargs:
             kwargs["data"] = json.dumps(kwargs["data"], cls=KRestJSONEncoder)
-            logger.debug("Request data: %s", kwargs["data"])
+            logger.info("Request data: %s" % kwargs["data"])
         if "raw" in kwargs:
             raw = kwargs["raw"]
             del kwargs["raw"]
@@ -109,7 +115,7 @@ class EndPoint(object):
         rv.raise_for_status()
         if rv.content and not raw:
             rv = rv.json()
-        logger.debug("Returned value is: %s", rv)
+        logger.info("Returned value is: %s", rv)
         return rv
 
     def _resource_url(self, resource_type):
