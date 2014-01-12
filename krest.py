@@ -87,6 +87,7 @@ class EndPoint(object):
                         retry = True
                 except Exception, err:
                     logger.error("Error: %s", str(err))
+                    retry = False
                 if retry and time.time() - start_time < self.retry_cfg.not_reachable_timeout:
                     logger.error("Sleeping for %s seconds", self.retry_cfg.not_reachable_pause)
                     time.sleep(self.retry_cfg.not_reachable_pause)
