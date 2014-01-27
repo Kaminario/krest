@@ -93,7 +93,10 @@ class EndPoint(object):
                     time.sleep(self.retry_cfg.not_reachable_pause)
                     logger.error("Retrying")
                 else:
-                    raise err
+                    if isinstance(err, HTTPError):
+                        raise HTTPError("%s\n%s" % (str(err), self._extract_err_msg(err)))
+                    else:
+                        raise err
         return wrapped
 
     #noinspection PyArgumentList
@@ -118,6 +121,14 @@ class EndPoint(object):
             rv = rv.json()
         logger.info("Returned value is: %s", rv)
         return rv
+
+    def _extract_err_msg(self, exception):
+        response = exception.response
+        if response.headers["content-type"] == "application/json":
+            data = response.json()
+            return data.get("error_msg", None) or data
+        else:
+            return response.text
 
     def _resource_url(self, resource_type):
         endpoint = self.api_prefix + self.resources[resource_type]
