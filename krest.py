@@ -24,7 +24,7 @@ import time
 
 class KRestJSONEncoder(json.JSONEncoder):
     def default(self, o):
-        if isinstance(o, RestObject):
+        if isinstance(o, (RestObject, RestObjectProxy)):
             return o._ref
         return super(KRestJSONEncoder, self).default(o)
 
@@ -207,7 +207,24 @@ class EndPoint(object):
             fp.write(chunk)
 
 
-class RestObjectProxy(object):
+class RestObjectBase(object):
+    def __repr__(self):
+        return self.__str__()
+
+    @property
+    def _obj_ref(self):
+        return self._ep._obj_ref(self._resource_type, self.id)
+
+    @property
+    def _obj_url(self):
+        return self._ep._obj_url(self._resource_type, self.id)
+
+    @property
+    def _ref(self):
+        return {"ref": self._obj_ref}
+
+
+class RestObjectProxy(RestObjectBase):
     def __init__(self, ep, ref):
         self._ep = ep
         (self._resource_endpoint, _, self.id) = ref["ref"].rpartition("/")
@@ -232,8 +249,11 @@ class RestObjectProxy(object):
     def __ne__(self, other):
         return not self == other
 
+    def __str__(self):
+        return "<%s('%s') %s>" % (self.__class__.__name__, self._resource_type, self._ref)
 
-class RestObject(object):
+
+class RestObject(RestObjectBase):
     def __init__(self, ep, resource_type, **kwargs):
         self._ep = ep
         self._resource_type = resource_type
@@ -278,22 +298,7 @@ class RestObject(object):
         self._changed = dict()
 
     def __str__(self):
-        return "<%s('%s') %s>" % (self.__class__.__name__, self._resource_type, (self._current))
-
-    def __repr__(self):
-        return self.__str__()
-
-    @property
-    def _obj_ref(self):
-        return self._ep._obj_ref(self._resource_type, self.id)
-
-    @property
-    def _obj_url(self):
-        return self._ep._obj_url(self._resource_type, self.id)
-
-    @property
-    def _ref(self):
-        return {"ref": self._obj_ref}
+        return "<%s('%s') %s>" % (self.__class__.__name__, self._resource_type, self._current)
 
     def __eq__(self, other, shallow=False):
         if not isinstance(other, (RestObject, RestObjectProxy)):
