@@ -103,29 +103,6 @@ class EndPoint(object):
                         raise err
         return wrapped
 
-    #noinspection PyArgumentList
-    @exception_wrapper
-    def _request(self, method, endpoint, **kwargs):
-        logger.info("Method: %s - Sending: %s" % (str(method), str(endpoint)))
-        if "data" in kwargs:
-            kwargs["data"] = json.dumps(kwargs["data"], cls=KRestJSONEncoder)
-            logger.info("Request data: %s" % kwargs["data"])
-        if "raw" in kwargs:
-            raw = kwargs["raw"]
-            del kwargs["raw"]
-        else:
-            raw = False
-        headers = {'content-type': 'application/json'}
-        if hasattr(self.ReqCfg, "headers"):
-            headers.update(self.ReqCfg.headers)
-        kwargs.update(self.req_cfg.__dict__)
-        rv = self.session.request(method, endpoint, auth=self.auth, verify=self.ssl_validate, headers=headers, **kwargs)
-        rv.raise_for_status()
-        if rv.content and not raw:
-            rv = rv.json()
-        logger.info("Returned value is: %s", rv)
-        return rv
-
     def _extract_err_msg(self, exception):
         response = exception.response
         if response.headers["content-type"] == "application/json":
@@ -133,6 +110,33 @@ class EndPoint(object):
             return data.get("error_msg", None) or data
         else:
             return response.text
+
+    #noinspection PyArgumentList
+    @exception_wrapper
+    def _request(self, method, endpoint, params={}, **kwargs):
+        logger.info("Method: %s - Sending: %s" % (str(method), str(endpoint)))
+
+        if "data" in kwargs:
+            kwargs["data"] = json.dumps(kwargs["data"], cls=KRestJSONEncoder)
+            logger.info("Request data: %s" % kwargs["data"])
+
+        headers = {'content-type': 'application/json'}
+        if hasattr(self.req_cfg, "headers"):
+            headers.update(self.req_cfg.headers)
+
+        kwargs.update(self.req_cfg.__dict__)
+
+        raw = params.get("raw", False)
+        kwargs["stream"] = params.get("stream", True) if raw else params.get("stream", False)
+
+        rv = self.session.request(method, endpoint, auth=self.auth, verify=self.ssl_validate, headers=headers, **kwargs)
+        rv.raise_for_status()
+
+        # WARNING: Evaluating valuating rv.content will negate the effect of stream=True
+        if not raw and rv.content:
+            rv = rv.json()
+        logger.info("Returned value is: %s", rv)
+        return rv
 
     def _resource_url(self, resource_type):
         endpoint = self.api_prefix + self.resources[resource_type]
@@ -144,8 +148,10 @@ class EndPoint(object):
     def _obj_url(self, resource_type, id):
         return "%s/%s" % (self._resource_url(resource_type), id)
 
-    def get(self, resource_type, id):
-        rv = self._request("GET", self._obj_url(resource_type, id))
+    def get(self, resource_type, id, params={}):
+        rv = self._request("GET", self._obj_url(resource_type, id), params=params)
+        if params.get("raw", False):
+            return rv.text
         ro = RestObject(self, resource_type, **rv)
         return ro
 
@@ -184,11 +190,17 @@ class EndPoint(object):
                 k = k + ".ref"
                 query[k] = v._obj_ref
 
-    def search(self, resource_type, **query):
+    def search(self, resource_type, params={}, **query):
         self._serialize_query_objects(query)
         url = self._resource_url(resource_type)
         url += "?%s" % urllib.urlencode(query)
-        data = self._request("GET", url)
+
+        data = self._request("GET", url, params=params)
+        if params.get("raw", False):
+            if params.get("fp", None):
+                return self.stream_response_to_file(data, params["fp"])
+            return data
+
         new_hits = list()
         for hit in data["hits"]:
             new_hits.append(RestObject(self, resource_type, **hit))
@@ -202,8 +214,11 @@ class EndPoint(object):
         if pretty:
             sep = "&" if "?" in url else "?"
             url = "%s%s__pretty" % (url, sep)
-        r = self._request("GET", url, raw=True, stream=True)
-        for chunk in r.iter_content(read_chunk):
+        r = self._request("GET", url, params={"raw": True})
+        self.stream_response_to_file(r, fp, read_chunk)
+
+    def stream_response_to_file(self, res, fp, read_chunk=8192):
+        for chunk in res.iter_content(read_chunk):
             fp.write(chunk)
 
 
