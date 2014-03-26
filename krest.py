@@ -40,10 +40,14 @@ class EndPoint(object):
         pass
 
     class RetryCfg(object):
-        connect_errors = True
         not_reachable_timeout = 600
         not_reachable_pause = 20
-        retry_on_auth_required = False
+
+        on_connect_errors = True
+        on_auth_required = False
+        on_5xx_errors = True
+        on_4xx_errors = False
+        on_other_errors = True
 
     def __init__(self, k2_addr, username, password, ssl_validate=True, autodiscover=True):
         self.full_endpoint = "%s/%s" % (self.api_prefix, "__full")
@@ -70,23 +74,26 @@ class EndPoint(object):
                     return func(self, *args, **kwargs)
                 except ConnectionError, err:
                     logger.error("Connection Error: %s", str(err))
-                    if self.retry_cfg.connect_errors:
+                    if self.retry_cfg.on_connect_errors:
                         retry = True
                 except HTTPError, err:
                     err_str = str(err)
                     status_code = err.response.status_code
                     logger.error("HTTP Error: %s (response-status_code = %d)", err_str, status_code)
-                    if (400 <= status_code) and (status_code <= 499):
-                        if status_code == 401 and self.retry_cfg.retry_on_auth_required:
+                    if 400 <= status_code and status_code <= 499:
+                        if status_code == 401 and self.retry_cfg.on_auth_required:
                             logger.error("Authorization required - retrying as requested")
                             retry = True
+                        elif self.retry_cfg.on_4xx_errors:
+                            logger.error("Managed error - retrying as requested...")
+                            retry = True
                         else:
-                            logger.error("Managed error - Not retrying...")
-                            retry = False
-                    elif (500 <= status_code) and (status_code <= 599):
-                        logger.error("Unmanaged error - Going to retry...")
-                        retry = True
-                    else:
+                            logger.error("Managed error - not retrying...")
+                    elif 500 <= status_code and status_code <= 599:
+                        if self.retry_cfg.on_5xx_errors:
+                            logger.error("Unmanaged error - Going to retry...")
+                            retry = True
+                    elif self.retry_cfg.on_other_errors:
                         logger.error("Unknown error - Going to retry...")
                         retry = True
                 except Exception, err:
