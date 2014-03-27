@@ -15,5 +15,8 @@ sed -i -r 's/(version=")[0-9]+\.[0-9]+\.[0-9]+/\1'$ver'/' setup.py
 git commit krest.py krest.spec setup.py -m "version bump to $ver"
 git tag -a "v$ver" -m "v$ver"
 
+git push
+git push --tags
+
 echo "Bumped version to $ver and tagged it in git"
 
