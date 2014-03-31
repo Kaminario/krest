@@ -105,18 +105,21 @@ class EndPoint(object):
                     logger.error("Retrying")
                 else:
                     if isinstance(err, HTTPError):
-                        raise HTTPError("%s\n%s" % (str(err), self._extract_err_msg(err)))
+                        raise self._rebuild_err(err)
                     else:
                         raise err
         return wrapped
 
-    def _extract_err_msg(self, exception):
+    def _rebuild_err(self, exception):
         response = exception.response
         if response.headers["content-type"] == "application/json":
             data = response.json()
-            return data.get("error_msg", None) or data
+            msg = data.get("error_msg", None) or data
         else:
-            return response.text
+            msg = response.text
+        e = HTTPError("%s\n%s" % (str(exception), msg))
+        e.response = response
+        return e
 
     #noinspection PyArgumentList
     @exception_wrapper
