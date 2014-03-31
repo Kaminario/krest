@@ -396,3 +396,6 @@ class ResultSet(object):
         af = self.autofetch
         self.__dict__.update(rs.__dict__)
         self.autofetch = af
+
+    def __nonzero__(self):
+        return bool(self.hits)
