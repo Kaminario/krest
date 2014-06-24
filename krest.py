@@ -1,6 +1,6 @@
 from __future__ import absolute_import
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 import json
 import urlparse
@@ -207,6 +207,7 @@ class EndPoint(object):
                 if k.endswith("__m_eq") or k.endswith("__in"):
                     continue
                 del query[k]
+                print len(v)
                 k += ".ref__m_eq" if isinstance(v[0], RestObjectBase) else "__m_eq"
                 query[k] = ",".join(_v._obj_ref if isinstance(_v, RestObjectBase) else _v for _v in v)
                 continue
