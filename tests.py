@@ -82,12 +82,16 @@ class KrestTest(unittest.TestCase):
 
     @should_complete_in(1)
     def test_5xx_errors(self):
+        if self.system_state == "ONLINE":
+            self.skipTest("Can not test 5xx errors while system is ONLINE")
         self.ep.retry_cfg.on_5xx_errors = False
         self.assertRaises(HTTPError, self.ep.search, "stats/system")
 
     @should_complete_in(not_reachable_timeout*1.15)
     @should_not_complete_before(not_reachable_timeout)
     def test_5xx_errors_retries(self):
+        if self.system_state == "ONLINE":
+            self.skipTest("Can not test 5xx errors while system is ONLINE")
         self.assertRaises(HTTPError, self.ep.search, "stats/system")
 
     @should_complete_in(5)
