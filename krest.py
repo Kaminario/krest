@@ -195,10 +195,21 @@ class EndPoint(object):
 
     def _serialize_query_objects(self, query):
         for k, v in query.items():
-            if isinstance(v, RestObject):
+            if isinstance(v, RestObjectBase):
                 del query[k]
                 k = k + ".ref"
                 query[k] = v._obj_ref
+                continue
+
+            if isinstance(v, ResultSet):
+                v = v.hits
+            if isinstance(v, (list, tuple)):
+                if k.endswith("__m_eq") or k.endswith("__in"):
+                    continue
+                del query[k]
+                k += ".ref__m_eq" if isinstance(v[0], RestObjectBase) else "__m_eq"
+                query[k] = ",".join(_v._obj_ref if isinstance(_v, RestObjectBase) else _v for _v in v)
+                continue
 
     def search(self, resource_type, params={}, **query):
         self._serialize_query_objects(query)
