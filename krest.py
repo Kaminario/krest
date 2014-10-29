@@ -42,12 +42,14 @@ class EndPoint(object):
     class RetryCfg(object):
         not_reachable_timeout = 600
         not_reachable_pause = 20
+        toofast_pause = .5
 
         on_connect_errors = True
         on_auth_required = False
         on_5xx_errors = True
         on_4xx_errors = False
         on_other_errors = True
+        on_toofast_error = False
 
     def __init__(self, k2_addr, username, password, ssl_validate=True, autodiscover=True):
         self.full_endpoint = "%s/%s" % (self.api_prefix, "__full")
@@ -68,6 +70,7 @@ class EndPoint(object):
         def wrapped(self, *args, **kwargs):
             start_time = time.time()
             retry = True
+            retry_too_fast = False
             while retry:
                 retry = False
                 try:
@@ -84,6 +87,9 @@ class EndPoint(object):
                         if status_code == 401 and self.retry_cfg.on_auth_required:
                             logger.error("Authorization required - retrying as requested")
                             retry = True
+                        if status_code == 429 and self.retry_cfg.on_toofast_error:
+                            logger.error("Server says we are going too fast. Slowing down")
+                            retry_too_fast = True
                         elif self.retry_cfg.on_4xx_errors:
                             logger.error("Managed error - retrying as requested...")
                             retry = True
@@ -103,6 +109,9 @@ class EndPoint(object):
                     logger.error("Sleeping for %s seconds", self.retry_cfg.not_reachable_pause)
                     time.sleep(self.retry_cfg.not_reachable_pause)
                     logger.error("Retrying")
+                elif retry_too_fast:
+                    time.sleep(self.retry_cfg.toofast_pause)
+                    retry = True
                 else:
                     if isinstance(err, HTTPError):
                         raise self._rebuild_err(err)

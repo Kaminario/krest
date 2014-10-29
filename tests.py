@@ -4,6 +4,7 @@ from functools import wraps
 import time
 import logging
 from collections import deque
+import threading
 
 from requests.exceptions import ConnectionError, HTTPError
 import krest
@@ -168,6 +169,48 @@ class KrestTest(unittest.TestCase):
         vg1, vol1 = self.create_volume_objects(index=1)
         vg2, vol2 = self.create_volume_objects(index=2)
         vgs = self.ep.search("volume_groups", name__m_eq=",".join([vg1.name, vg2.name]))
+
+    def loader(self, *args, **kwargs):
+        try:
+            for i in range(10):
+                self.ep.get("system/state", 1)
+        except:
+            return
+
+    def verify_not_root(self):
+        if self.ep.get("system/state", 1).current_user_role == "root":
+            self.skipTest("There is no request rate enforcment on root-grade users")
+
+    def test_toofast(self):
+        """Test that speed rate is enforced by server"""
+        self.verify_not_root()
+        loader = threading.Thread(target=self.loader)
+        loader.start()
+        success = False
+        try:
+            for i in range(100):
+                if success:
+                    break
+                self.ep.get("system/state", 1)
+        except krest.HTTPError as err:
+            if err.response.status_code == 429:
+                success = True
+            else:
+                raise
+        loader.join()
+        time.sleep(1)  # To free some bandwith for those after us to run
+        self.assertTrue(success, "Request rate limiting seems not to function")
+
+    def test_toofast_retries(self):
+        """Test that too-fast retries are working"""
+        self.verify_not_root()
+        self.ep.retry_cfg.on_toofast_error = True
+        loader = threading.Thread(target=self.loader)
+        loader.start()
+        for i in range(100):
+            self.ep.get("system/state", 1)
+        loader.join()
+        time.sleep(1)  # To free some bandwith for those after us to run
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
