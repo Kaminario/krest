@@ -29,7 +29,7 @@ class KrestTest(unittest.TestCase):
         for item in self.to_clean:
             try:
                 item.delete()
-            except Exception:
+            except:
                 pass
 
     def should_complete_in(seconds):
@@ -220,6 +220,19 @@ class KrestTest(unittest.TestCase):
         self.ep.new("volume_groups", id=vg_id, description=tst_desc).save()
         vg = self.ep.get("volume_groups", vg_id)
         self.assertEqual(vg.description, tst_desc, msg="Failed to update VG description")
+
+    def test_custom_headers(self):
+        """Test that headers override is working"""
+        self.create_volume_objects(index=1)
+        self.ep.req_cfg.headers = {"Foo": "Bar"}
+        try:
+            self.create_volume_objects(index=1)
+        except krest.HTTPError as err:
+            self.assertIn("Foo", err.response.request.headers)
+            self.assertEqual("Bar", err.response.request.headers["Foo"])
+        else:
+            self.fail("Creaing objects with similar names did not raise exception")
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)

@@ -142,8 +142,13 @@ class EndPoint(object):
         headers = {'content-type': 'application/json'}
         if hasattr(self.req_cfg, "headers"):
             headers.update(self.req_cfg.headers)
+        if "headers" in kwargs:
+            headers.update(kwargs["headers"])
 
         kwargs.update(self.req_cfg.__dict__)
+        # Taking out "headers" field from kwargs - we pass it explicitly
+        if "headers" in kwargs:
+            del kwargs["headers"]
 
         raw = params.get("raw", False)
         kwargs["stream"] = params.get("stream", True) if raw else params.get("stream", False)
