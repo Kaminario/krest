@@ -151,7 +151,7 @@ class EndPoint(object):
         rv = self.session.request(method, endpoint, auth=self.auth, verify=self.ssl_validate, headers=headers, **kwargs)
         rv.raise_for_status()
 
-        # WARNING: Evaluating valuating rv.content will negate the effect of stream=True
+        # WARNING: Evaluating value of rv.content will negate the effect of stream=True
         if not raw and rv.content:
             rv = rv.json()
         logger.info("Returned value is: %s", rv)
