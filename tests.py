@@ -212,6 +212,15 @@ class KrestTest(unittest.TestCase):
         loader.join()
         time.sleep(1)  # To free some bandwith for those after us to run
 
+    def test_in_place_update(self):
+        """Check we can use ep.new(...) to update object"""
+        self.create_volume_objects(index=1)
+        vg_id = self.ep.search("volume_groups", name="unittest_vg1").hits[0].id
+        tst_desc = "tst_desc"
+        self.ep.new("volume_groups", id=vg_id, description=tst_desc).save()
+        vg = self.ep.get("volume_groups", vg_id)
+        self.assertEqual(vg.description, tst_desc, msg="Failed to update VG description")
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     unittest.main()

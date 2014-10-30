@@ -304,6 +304,7 @@ class RestObject(RestObjectBase):
         self._ep = ep
         self._resource_type = resource_type
         self._update(**kwargs)
+        self._changed = self._current
 
     def save(self):
         if hasattr(self, "id"):
