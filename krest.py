@@ -51,8 +51,15 @@ class EndPoint(object):
         on_other_errors = True
         on_toofast_error = False
 
-    def __init__(self, k2_addr, username, password, ssl_validate=True, autodiscover=True):
+    def __init__(self, k2_addr, username, password, ssl_validate=True,
+                 autodiscover=True,
+                 lazy_load_references=True,
+                 parse_references=True):
+
         self.full_endpoint = "%s/%s" % (self.api_prefix, "__full")
+
+        self.lazy_load_references = lazy_load_references
+        self.parse_references = parse_references
 
         self.ssl_validate = ssl_validate
         self.base_url = "https://%s" % k2_addr
@@ -335,7 +342,7 @@ class RestObject(RestObjectBase):
 
     def __getattr__(self, attr):
         val = self._current[attr]
-        if isinstance(val, RestObjectProxy):
+        if self._ep.lazy_load_references and isinstance(val, RestObjectProxy):
             val = val()
             self._current[attr] = val
         return val
@@ -343,7 +350,7 @@ class RestObject(RestObjectBase):
     def _update(self, **kwargs):
         self._current = dict()
         for k, v in kwargs.items():
-            if isinstance(v, dict) and "ref" in v:
+            if self._ep.parse_references and isinstance(v, dict) and "ref" in v:
                 self._current[k] = RestObjectProxy(self._ep, v)
             else:
                 self._current[k] = v

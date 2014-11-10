@@ -233,6 +233,27 @@ class KrestTest(unittest.TestCase):
         else:
             self.fail("Creaing objects with similar names did not raise exception")
 
+    def test_lazy_load(self):
+        """Test that referneces lazy loading is working"""
+        self.create_volume_objects()
+        vol = self.ep.search("volumes", id__gt=1).hits[0]
+        vol.volume_group.name
+
+    def test_no_lazy_load(self):
+        """Test that DISABLING referneces lazy loading is working"""
+        self.create_volume_objects()
+        self.ep.lazy_load_references = False
+        vol = self.ep.search("volumes", id__gt=1).hits[0]
+        vol.volume_group
+        self.assertIsInstance(vol.volume_group, krest.RestObjectProxy)
+
+    def test_no_ref_parsing(self):
+        """Test that DISABLING refernece parsing is working"""
+        self.create_volume_objects()
+        self.ep.parse_references = False
+        vol = self.ep.search("volumes", id__gt=1).hits[0]
+        vol.volume_group
+        self.assertIsInstance(vol.volume_group, dict)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
