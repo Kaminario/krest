@@ -172,7 +172,7 @@ class KrestTest(unittest.TestCase):
 
     def loader(self, *args, **kwargs):
         try:
-            for i in range(10):
+            for i in range(100):
                 self.ep.get("system/state", 1)
         except:
             return
