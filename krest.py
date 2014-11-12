@@ -137,25 +137,43 @@ class EndPoint(object):
         e.response = response
         return e
 
+    def _prepare_request_data(self, req_args):
+        if "data" in req_args:
+            req_args["data"] = json.dumps(req_args["data"], cls=KRestJSONEncoder)
+            logger.info("Request data: %s" % req_args["data"])
+
+    def _prepare_request_headers(self, req_args):
+        headers = {'content-type': 'application/json'}
+        if hasattr(self.req_cfg, "headers"):
+            headers.update(self.req_cfg.headers)
+        if "headers" in req_args:
+            headers.update(req_args["headers"])
+
+        req_args.update(self.req_cfg.__dict__)
+        # Taking out "headers" field from req_args - we pass it explicitly
+        if "headers" in req_args:
+            del req_args["headers"]
+
+        return headers
+
+    def _prepare_request_timeout(self, req_args, req_options):
+        if "timeout" in req_args:
+            return
+        if "timeout" in req_options:
+            req_args["timeout"] = req_options["timeout"]
+            return
+        if hasattr(self.req_cfg, "timeout"):
+            req_args["timeout"] = self.req_cfg.timeout
+            return
+
     #noinspection PyArgumentList
     @exception_wrapper
     def _request(self, method, endpoint, params={}, **kwargs):
         logger.info("Method: %s - Sending: %s" % (str(method), str(endpoint)))
 
-        if "data" in kwargs:
-            kwargs["data"] = json.dumps(kwargs["data"], cls=KRestJSONEncoder)
-            logger.info("Request data: %s" % kwargs["data"])
-
-        headers = {'content-type': 'application/json'}
-        if hasattr(self.req_cfg, "headers"):
-            headers.update(self.req_cfg.headers)
-        if "headers" in kwargs:
-            headers.update(kwargs["headers"])
-
-        kwargs.update(self.req_cfg.__dict__)
-        # Taking out "headers" field from kwargs - we pass it explicitly
-        if "headers" in kwargs:
-            del kwargs["headers"]
+        self._prepare_request_timeout(kwargs, params)
+        self._prepare_request_data(kwargs)
+        headers = self._prepare_request_headers(kwargs)
 
         raw = params.get("raw", False)
         kwargs["stream"] = params.get("stream", True) if raw else params.get("stream", False)
@@ -186,30 +204,30 @@ class EndPoint(object):
         ro = RestObject(self, resource_type, **rv)
         return ro
 
-    def post(self, ro):
-        rv = self._request("POST", self._resource_url(ro._resource_type), data=ro._current)
+    def post(self, ro, params={}):
+        rv = self._request("POST", self._resource_url(ro._resource_type), data=ro._current, params=params)
         ro._update(**rv)
         return ro
 
-    def patch(self, ro):
+    def patch(self, ro, params={}):
         if not ro._changed:
             return
-        rv = self._request("PATCH", ro._obj_url, data=ro._changed)
+        rv = self._request("PATCH", ro._obj_url, data=ro._changed, params=params)
         ro._update(**rv)
         return ro
 
-    def delete(self, ro):
-        self._request("DELETE", ro._obj_url)
+    def delete(self, ro, params={}):
+        self._request("DELETE", ro._obj_url, params=params)
 
     def new(self, resource_type, **attrs):
         if resource_type not in self.resources:
             raise ValueError("Unknown resource_type: %s" % resource_type)
-        return RestObject(self, resource_type, **attrs)
+        return RestObject.new(self, resource_type, **attrs)
 
-    def discover(self):
+    def discover(self, params={}):
         self.resources = dict()
         self.resource_endpoints = dict()
-        data = self._request("GET", urlparse.urljoin(self.base_url, self.api_prefix))
+        data = self._request("GET", urlparse.urljoin(self.base_url, self.api_prefix), params=params)
         for k, v in data["resources"].items():
             self.resources[k] = v["url"]
             self.resource_endpoints[v["url"]] = k
@@ -316,22 +334,27 @@ class RestObject(RestObjectBase):
         self._ep = ep
         self._resource_type = resource_type
         self._update(**kwargs)
-        self._changed = self._current
 
-    def save(self):
+    @classmethod
+    def new(cls, ep, resource_type, **kwargs):
+        obj = cls(ep, resource_type, **kwargs)
+        obj._changed = obj._current
+        return obj
+
+    def save(self, params={}):
         if hasattr(self, "id"):
             # construct things that changed and run patch
-            return self._ep.patch(self)
+            return self._ep.patch(self, params=params)
         else:
-            return self._ep.post(self)
+            return self._ep.post(self, params=params)
 
-    def delete(self):
-        return self._ep.delete(self)
+    def delete(self, params={}):
+        return self._ep.delete(self, params=params)
 
-    def refresh(self):
+    def refresh(self, params={}):
         if not hasattr(self, "id"):
             return
-        new_obj = self._ep.get(self._resource_type, self.id)
+        new_obj = self._ep.get(self._resource_type, self.id, params=params)
         self._update(**new_obj._current)
 
     def __setattr__(self, attr, val):

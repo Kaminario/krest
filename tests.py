@@ -1,6 +1,6 @@
 import unittest
 import os
-from functools import wraps
+from functools import wraps, partial
 import time
 import logging
 from collections import deque
@@ -254,6 +254,40 @@ class KrestTest(unittest.TestCase):
         vol = self.ep.search("volumes", id__gt=1).hits[0]
         vol.volume_group
         self.assertIsInstance(vol.volume_group, dict)
+
+    def _test_request_timeout(self, params={}):
+        Timeout = krest.requests.exceptions.Timeout
+
+        getter = partial(self.ep.get, "system/state", 1, params=params)
+        self.assertRaises(Timeout, getter)
+
+        searcher = partial(self.ep.search, "system/state", params=params)
+        self.assertRaises(Timeout, searcher)
+
+        sysstate = self.ep.new("system/state", foo="bar")
+        poster = partial(sysstate.save, params=params)
+        self.assertRaises(Timeout, poster)
+
+        sysstate = self.ep.new("system/state", id=1, foo="bar")
+        patcher = partial(sysstate.save, params=params)
+        self.assertRaises(Timeout, patcher)
+
+        deleter = partial(sysstate.delete, params=params)
+        self.assertRaises(Timeout, deleter)
+
+        refresher = partial(sysstate.refresh, params=params)
+        self.assertRaises(Timeout, refresher)
+
+    def test_request_timeout_through_options(self):
+        """Test that timeouts are working through options dictionary"""
+        params = {"timeout": 0.000001}
+        self._test_request_timeout(params=params)
+
+    def test_request_timeout_through_req_cfg(self):
+        """Test that timeouts are working through options dictionary"""
+        self.ep.req_cfg.timeout = 0.000001
+        self._test_request_timeout()
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
