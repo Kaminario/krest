@@ -168,15 +168,15 @@ class EndPoint(object):
 
     #noinspection PyArgumentList
     @exception_wrapper
-    def _request(self, method, endpoint, params={}, **kwargs):
+    def _request(self, method, endpoint, options={}, **kwargs):
         logger.info("Method: %s - Sending: %s" % (str(method), str(endpoint)))
 
-        self._prepare_request_timeout(kwargs, params)
+        self._prepare_request_timeout(kwargs, options)
         self._prepare_request_data(kwargs)
         headers = self._prepare_request_headers(kwargs)
 
-        raw = params.get("raw", False)
-        kwargs["stream"] = params.get("stream", True) if raw else params.get("stream", False)
+        raw = options.get("raw", False)
+        kwargs["stream"] = options.get("stream", True) if raw else options.get("stream", False)
 
         rv = self.session.request(method, endpoint, auth=self.auth, verify=self.ssl_validate, headers=headers, **kwargs)
         rv.raise_for_status()
@@ -197,37 +197,37 @@ class EndPoint(object):
     def _obj_url(self, resource_type, id):
         return "%s/%s" % (self._resource_url(resource_type), id)
 
-    def get(self, resource_type, id, params={}):
-        rv = self._request("GET", self._obj_url(resource_type, id), params=params)
-        if params.get("raw", False):
+    def get(self, resource_type, id, options={}):
+        rv = self._request("GET", self._obj_url(resource_type, id), options=options)
+        if options.get("raw", False):
             return rv.text
         ro = RestObject(self, resource_type, **rv)
         return ro
 
-    def post(self, ro, params={}):
-        rv = self._request("POST", self._resource_url(ro._resource_type), data=ro._current, params=params)
+    def post(self, ro, options={}):
+        rv = self._request("POST", self._resource_url(ro._resource_type), data=ro._current, options=options)
         ro._update(**rv)
         return ro
 
-    def patch(self, ro, params={}):
+    def patch(self, ro, options={}):
         if not ro._changed:
             return
-        rv = self._request("PATCH", ro._obj_url, data=ro._changed, params=params)
+        rv = self._request("PATCH", ro._obj_url, data=ro._changed, options=options)
         ro._update(**rv)
         return ro
 
-    def delete(self, ro, params={}):
-        self._request("DELETE", ro._obj_url, params=params)
+    def delete(self, ro, options={}):
+        self._request("DELETE", ro._obj_url, options=options)
 
     def new(self, resource_type, **attrs):
         if resource_type not in self.resources:
             raise ValueError("Unknown resource_type: %s" % resource_type)
         return RestObject.new(self, resource_type, **attrs)
 
-    def discover(self, params={}):
+    def discover(self, options={}):
         self.resources = dict()
         self.resource_endpoints = dict()
-        data = self._request("GET", urlparse.urljoin(self.base_url, self.api_prefix), params=params)
+        data = self._request("GET", urlparse.urljoin(self.base_url, self.api_prefix), options=options)
         for k, v in data["resources"].items():
             self.resources[k] = v["url"]
             self.resource_endpoints[v["url"]] = k
@@ -251,15 +251,15 @@ class EndPoint(object):
                 query[k] = ",".join(_v._obj_ref if isinstance(_v, RestObjectBase) else _v for _v in v)
                 continue
 
-    def search(self, resource_type, params={}, **query):
+    def search(self, resource_type, options={}, **query):
         self._serialize_query_objects(query)
         url = self._resource_url(resource_type)
         url += "?%s" % urllib.urlencode(query)
 
-        data = self._request("GET", url, params=params)
-        if params.get("raw", False):
-            if params.get("fp", None):
-                return self.stream_response_to_file(data, params["fp"])
+        data = self._request("GET", url, options=options)
+        if options.get("raw", False):
+            if options.get("fp", None):
+                return self.stream_response_to_file(data, options["fp"])
             return data
 
         new_hits = list()
@@ -275,7 +275,7 @@ class EndPoint(object):
         if pretty:
             sep = "&" if "?" in url else "?"
             url = "%s%s__pretty" % (url, sep)
-        r = self._request("GET", url, params={"raw": True})
+        r = self._request("GET", url, options={"raw": True})
         self.stream_response_to_file(r, fp, read_chunk)
 
     def stream_response_to_file(self, res, fp, read_chunk=8192):
@@ -341,20 +341,20 @@ class RestObject(RestObjectBase):
         obj._changed = obj._current
         return obj
 
-    def save(self, params={}):
+    def save(self, options={}):
         if hasattr(self, "id"):
             # construct things that changed and run patch
-            return self._ep.patch(self, params=params)
+            return self._ep.patch(self, options=options)
         else:
-            return self._ep.post(self, params=params)
+            return self._ep.post(self, options=options)
 
-    def delete(self, params={}):
-        return self._ep.delete(self, params=params)
+    def delete(self, options={}):
+        return self._ep.delete(self, options=options)
 
-    def refresh(self, params={}):
+    def refresh(self, options={}):
         if not hasattr(self, "id"):
             return
-        new_obj = self._ep.get(self._resource_type, self.id, params=params)
+        new_obj = self._ep.get(self._resource_type, self.id, options=options)
         self._update(**new_obj._current)
 
     def __setattr__(self, attr, val):

@@ -255,33 +255,33 @@ class KrestTest(unittest.TestCase):
         vol.volume_group
         self.assertIsInstance(vol.volume_group, dict)
 
-    def _test_request_timeout(self, params={}):
+    def _test_request_timeout(self, options={}):
         Timeout = krest.requests.exceptions.Timeout
 
-        getter = partial(self.ep.get, "system/state", 1, params=params)
+        getter = partial(self.ep.get, "system/state", 1, options=options)
         self.assertRaises(Timeout, getter)
 
-        searcher = partial(self.ep.search, "system/state", params=params)
+        searcher = partial(self.ep.search, "system/state", options=options)
         self.assertRaises(Timeout, searcher)
 
         sysstate = self.ep.new("system/state", foo="bar")
-        poster = partial(sysstate.save, params=params)
+        poster = partial(sysstate.save, options=options)
         self.assertRaises(Timeout, poster)
 
         sysstate = self.ep.new("system/state", id=1, foo="bar")
-        patcher = partial(sysstate.save, params=params)
+        patcher = partial(sysstate.save, options=options)
         self.assertRaises(Timeout, patcher)
 
-        deleter = partial(sysstate.delete, params=params)
+        deleter = partial(sysstate.delete, options=options)
         self.assertRaises(Timeout, deleter)
 
-        refresher = partial(sysstate.refresh, params=params)
+        refresher = partial(sysstate.refresh, options=options)
         self.assertRaises(Timeout, refresher)
 
     def test_request_timeout_through_options(self):
         """Test that timeouts are working through options dictionary"""
-        params = {"timeout": 0.000001}
-        self._test_request_timeout(params=params)
+        options = {"timeout": 0.000001}
+        self._test_request_timeout(options=options)
 
     def test_request_timeout_through_req_cfg(self):
         """Test that timeouts are working through options dictionary"""
