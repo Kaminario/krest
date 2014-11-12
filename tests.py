@@ -288,6 +288,16 @@ class KrestTest(unittest.TestCase):
         self.ep.req_cfg.timeout = 0.000001
         self._test_request_timeout()
 
+    def test_patch(self):
+        """Test that object updating works"""
+        self.create_volume_objects(index=1)
+        vg = self.ep.search("volume_groups", name="unittest_vg1").hits[0]
+        tst_desc = "tst_desc"
+        vg.description = tst_desc
+        vg.save()
+        vg = self.ep.get("volume_groups", vg.id)
+        self.assertEqual(vg.description, tst_desc, msg="Failed to update VG description")
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
