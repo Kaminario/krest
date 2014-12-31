@@ -334,6 +334,16 @@ class KrestTest(unittest.TestCase):
         """
         self._test_list(rest_objects=False)
 
+    def test_validate_endpoints(self):
+        """Test that endpoint validation works properly"""
+        self.assertRaises(ValueError, self.ep.new, "asdfasdf", name=1)
+
+        ep = krest.EndPoint(KREST_HOST, KREST_USER, KREST_PASSWORD, ssl_validate=False,
+                            validate_endpoints=False)
+        try:
+            ep.new("blah", name=1)
+        except ValueError:
+            self.fail("Failed to create object on non-existing endpoint, although validate_endpoints=False")
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)

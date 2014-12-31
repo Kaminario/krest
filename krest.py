@@ -54,12 +54,14 @@ class EndPoint(object):
     def __init__(self, k2_addr, username, password, ssl_validate=True,
                  autodiscover=True,
                  lazy_load_references=True,
-                 parse_references=True):
+                 parse_references=True,
+                 validate_endpoints=True):
 
         self.full_endpoint = "%s/%s" % (self.api_prefix, "__full")
 
         self.lazy_load_references = lazy_load_references
         self.parse_references = parse_references
+        self.validate_endpoints = validate_endpoints
 
         self.ssl_validate = ssl_validate
         self.base_url = "https://%s" % k2_addr
@@ -220,7 +222,7 @@ class EndPoint(object):
         self._request("DELETE", ro._obj_url, options=options)
 
     def new(self, resource_type, **attrs):
-        if resource_type not in self.resources:
+        if resource_type not in self.resources and self.validate_endpoints:
             raise ValueError("Unknown resource_type: %s" % resource_type)
         return RestObject.new(self, resource_type, **attrs)
 
