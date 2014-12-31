@@ -298,6 +298,42 @@ class KrestTest(unittest.TestCase):
         vg = self.ep.get("volume_groups", vg.id)
         self.assertEqual(vg.description, tst_desc, msg="Failed to update VG description")
 
+    def _test_list(self, rest_objects=True):
+        self.create_volume_objects(index=1)
+        self.create_volume_objects(index=2)
+
+        vols_single = []
+
+        if rest_objects:
+            vgs = self.ep.search("volume_groups")
+            for vg in vgs:
+                vols_single.extend(self.ep.search("volumes", volume_group=vg).hits)
+            vols_multi = self.ep.search("volumes", volume_group=vgs).hits
+        else:
+            vols = self.ep.search("volumes", __limit=2)
+            for v in vols:
+                vols_single.extend(self.ep.search("volumes", name=v.name).hits)
+            vols_multi = self.ep.search("volumes", name=[vg.name for vg in vols]).hits
+
+        self.assertEqual(len(vols_multi), len(vols_single),
+                         msg="Single and multi queries returned different amount of results")
+        for v in vols_multi:
+            self.assertIn(v, vols_single, msg="Multi query returned result that was not in single query")
+
+    def test_list_rest_objects(self):
+        """
+        Test that list search argument automatically turns on __m_eq serializaion.
+        For RestObjects.
+        """
+        self._test_list(rest_objects=True)
+
+    def test_list_simple(self):
+        """
+        Test that list search argument automatically turns on __m_eq serializaion
+        For simple types.
+        """
+        self._test_list(rest_objects=False)
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)

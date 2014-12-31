@@ -244,9 +244,10 @@ class EndPoint(object):
                 v = v.hits
             if isinstance(v, (list, tuple)):
                 if k.endswith("__m_eq") or k.endswith("__in"):
+                    # User wants to do stuff by himself
                     continue
+
                 del query[k]
-                print len(v)
                 k += ".ref__m_eq" if isinstance(v[0], RestObjectBase) else "__m_eq"
                 query[k] = ",".join(_v._obj_ref if isinstance(_v, RestObjectBase) else _v for _v in v)
                 continue
