@@ -144,7 +144,7 @@ class EndPoint(object):
             req_args["data"] = json.dumps(req_args["data"], cls=KRestJSONEncoder)
             logger.info("Request data: %s" % req_args["data"])
 
-    def _prepare_request_headers(self, req_args):
+    def _prepare_request_headers(self, req_args, options):
         headers = {'content-type': 'application/json'}
         if hasattr(self.req_cfg, "headers"):
             headers.update(self.req_cfg.headers)
@@ -156,6 +156,14 @@ class EndPoint(object):
         if "headers" in req_args:
             del req_args["headers"]
 
+        sequence = options.get("sequence", {})
+        if sequence:
+            headers["X-K2-Sequence"] = []
+            for id, num in sequence.items():
+                headers["X-K2-Sequence"].append("%s=%s" % (id, num))
+            headers["X-K2-Sequence"] = ",".join(headers["X-K2-Sequence"])
+
+        print "Headers: %s" % headers
         return headers
 
     def _prepare_request_timeout(self, req_args, req_options):
@@ -175,7 +183,7 @@ class EndPoint(object):
 
         self._prepare_request_timeout(kwargs, options)
         self._prepare_request_data(kwargs)
-        headers = self._prepare_request_headers(kwargs)
+        headers = self._prepare_request_headers(kwargs, options)
 
         raw = options.get("raw", False)
         kwargs["stream"] = options.get("stream", True) if raw else options.get("stream", False)

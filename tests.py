@@ -5,6 +5,7 @@ import time
 import logging
 from collections import deque
 import threading
+import random
 
 from requests.exceptions import ConnectionError, HTTPError
 import krest
@@ -22,7 +23,7 @@ class KrestTest(unittest.TestCase):
         krest.EndPoint.RetryCfg.not_reachable_timeout = not_reachable_timeout
         krest.EndPoint.RetryCfg.not_reachable_pause = not_reachable_pause
         self.ep = krest.EndPoint(KREST_HOST, KREST_USER, KREST_PASSWORD, ssl_validate=False)
-        self.system_state = self.ep.get("system/state", 1).state
+        self.system_state = self.ep.get("system/state", 1)
         self.to_clean = deque()
 
     def tearDown(self):
@@ -93,7 +94,7 @@ class KrestTest(unittest.TestCase):
 
     @should_complete_in(1)
     def test_5xx_errors(self):
-        if self.system_state == "ONLINE":
+        if self.system_state.state == "ONLINE":
             self.skipTest("Can not test 5xx errors while system is ONLINE")
         self.ep.retry_cfg.on_5xx_errors = False
         self.assertRaises(HTTPError, self.ep.search, "stats/system")
@@ -101,7 +102,7 @@ class KrestTest(unittest.TestCase):
     @should_complete_in(not_reachable_timeout*1.15)
     @should_not_complete_before(not_reachable_timeout)
     def test_5xx_errors_retries(self):
-        if self.system_state == "ONLINE":
+        if self.system_state.state == "ONLINE":
             self.skipTest("Can not test 5xx errors while system is ONLINE")
         self.assertRaises(HTTPError, self.ep.search, "stats/system")
 
@@ -344,6 +345,41 @@ class KrestTest(unittest.TestCase):
             ep.new("blah", name=1)
         except ValueError:
             self.fail("Failed to create object on non-existing endpoint, although validate_endpoints=False")
+
+    def test_sequences(self):
+        """Test that single sequence is working"""
+        if not hasattr(self.system_state, "rest_api_version"):
+            self.skipTest("Skipping test - not supported by K2")
+
+        sid1 = "krest%s" % random.random()
+        sid2 = "krest%s" % random.random()
+        sid3 = "krest%s" % random.random()
+        sequences = {sid1: 1, sid2: 1, sid3: 1}
+
+        hg = self.ep.new("host_groups", name="unittest_hg1")
+        hg.save(options={"sequence": sequences})
+        self.to_clean.appendleft(hg)
+
+        hg = self.ep.new("host_groups", name="unittest_hg2")
+
+        try:
+            sequences = {sid1: 1, sid2: 1, sid3: 1}
+            hg.save(options={"sequence": sequences})
+        except krest.HTTPError as err:
+            self.assertEqual(err.response.status_code, 409)
+        try:
+            sequences = {sid1: 1, sid2: 1, sid3: 2}
+            hg.save(options={"sequence": sequences})
+        except krest.HTTPError as err:
+            self.assertEqual(err.response.status_code, 409)
+        try:
+            sequences = {sid1: 1, sid2: 2, sid3: 2}
+            hg.save(options={"sequence": sequences})
+        except krest.HTTPError as err:
+            self.assertEqual(err.response.status_code, 409)
+        sequences = {sid1: 2, sid2: 2, sid3: 2}
+        hg.save(options={"sequence": sequences})
+        self.to_clean.appendleft(hg)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
