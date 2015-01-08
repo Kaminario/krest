@@ -198,7 +198,11 @@ class EndPoint(object):
         return rv
 
     def _resource_url(self, resource_type):
-        endpoint = self.api_prefix + self.resources[resource_type]
+        if self.validate_endpoints:
+            resource_path = self.resources[resource_type]
+        else:
+            resource_path = "/%s" % resource_type
+        endpoint = self.api_prefix + resource_path
         return urlparse.urljoin(self.base_url, endpoint)
 
     def _obj_ref(self, resource_type, id):
@@ -230,7 +234,7 @@ class EndPoint(object):
         self._request("DELETE", ro._obj_url, options=options)
 
     def new(self, resource_type, **attrs):
-        if resource_type not in self.resources and self.validate_endpoints:
+        if self.validate_endpoints and resource_type not in self.resources:
             raise ValueError("Unknown resource_type: %s" % resource_type)
         return RestObject.new(self, resource_type, **attrs)
 

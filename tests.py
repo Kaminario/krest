@@ -340,11 +340,15 @@ class KrestTest(unittest.TestCase):
         self.assertRaises(ValueError, self.ep.new, "asdfasdf", name=1)
 
         ep = krest.EndPoint(KREST_HOST, KREST_USER, KREST_PASSWORD, ssl_validate=False,
+                            autodiscover=False,
                             validate_endpoints=False)
         try:
             ep.new("blah", name=1)
         except ValueError:
             self.fail("Failed to create object on non-existing endpoint, although validate_endpoints=False")
+
+        hg = ep.new("host_groups", name="unittest_hg1").save()
+        self.to_clean.appendleft(hg)
 
     def test_sequences(self):
         """Test that single sequence is working"""
