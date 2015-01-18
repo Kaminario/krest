@@ -22,6 +22,12 @@ import time
 #TODO: Parse errors properly
 
 
+class KrestProtocolError(Exception):
+    def __init__(self, message, response):
+        super(KrestProtocolError, self).__init__(message)
+        self.response = response
+
+
 class KRestJSONEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, (RestObject, RestObjectProxy)):
@@ -163,7 +169,6 @@ class EndPoint(object):
                 headers["X-K2-Sequence"].append("%s=%s" % (id, num))
             headers["X-K2-Sequence"] = ",".join(headers["X-K2-Sequence"])
 
-        print "Headers: %s" % headers
         return headers
 
     def _prepare_request_timeout(self, req_args, req_options):
@@ -192,8 +197,11 @@ class EndPoint(object):
         rv.raise_for_status()
 
         # WARNING: Evaluating value of rv.content will negate the effect of stream=True
-        if not raw and rv.content:
-            rv = rv.json()
+        if not raw:
+            if rv.content:
+                rv = rv.json()
+            elif method != "DELETE":
+                raise KrestProtocolError("Recieved response without content", rv)
         logger.info("Returned value is: %s", rv)
         return rv
 
