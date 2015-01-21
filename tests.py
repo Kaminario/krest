@@ -6,6 +6,7 @@ import logging
 from collections import deque
 import threading
 import random
+from distutils.version import StrictVersion
 
 from requests.exceptions import ConnectionError, HTTPError
 import krest
@@ -56,6 +57,19 @@ class KrestTest(unittest.TestCase):
                 took = finish - start
                 self.assertTrue(took > seconds,
                                 "Test finished before %s seconds. Took %s" % (seconds, took))
+            return wrapper
+        return inner
+
+    def min_api_version(version):
+        def inner(func):
+            @wraps(func)
+            def wrapper(self):
+                api_version = getattr(self.system_state, "rest_api_version", None)
+                if not api_version:
+                    self.skipTest("Skipping test. This is an older k2 that does not specify API version")
+                if StrictVersion(api_version) < StrictVersion(api_version):
+                    self.skipTest("Skipping test. Requires at least version %s of the API" % version)
+                func(self)
             return wrapper
         return inner
 
@@ -350,10 +364,8 @@ class KrestTest(unittest.TestCase):
         hg = ep.new("host_groups", name="unittest_hg1").save()
         self.to_clean.appendleft(hg)
 
+    @min_api_version("2.1.0")
     def test_sequences(self):
-        """Test that single sequence is working"""
-        if not hasattr(self.system_state, "rest_api_version"):
-            self.skipTest("Skipping test - not supported by K2")
 
         sid1 = "krest%s" % random.random()
         sid2 = "krest%s" % random.random()
@@ -384,6 +396,24 @@ class KrestTest(unittest.TestCase):
         sequences = {sid1: 2, sid2: 2, sid3: 2}
         hg.save(options={"sequence": sequences})
         self.to_clean.appendleft(hg)
+
+    def test_get(self):
+        """Test that ep.get is working"""
+        v = self.ep.get("volumes", 1)
+        self.assertEqual(v.id, 1, msg="Got bogus response instead of volume with id=1")
+
+    @min_api_version("2.1.0")
+    def test_fields_get(self):
+        """Test.that __fields filtering is working with .get"""
+        v = self.ep.get("volumes", 1, __fields=["id", "name"])
+        self.assertEqual(set(v._current.keys()), set(["id", "name"]))
+
+    @min_api_version("2.1.0")
+    def test_fields_search(self):
+        """Test.that __fields filtering is working with .search"""
+        v = self.ep.search("volumes", id=1, __fields=["id", "name"]).hits[0]
+        self.assertEqual(set(v._current.keys()), set(["id", "name"]))
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)

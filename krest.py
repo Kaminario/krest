@@ -219,8 +219,14 @@ class EndPoint(object):
     def _obj_url(self, resource_type, id):
         return "%s/%s" % (self._resource_url(resource_type), id)
 
-    def get(self, resource_type, id, options={}):
-        rv = self._request("GET", self._obj_url(resource_type, id), options=options)
+    def get(self, resource_type, id, options={}, **query):
+        # query is passed merely for __fields support
+        url = self._obj_url(resource_type, id)
+        if query:
+            self._serialize_query_objects(query)
+            url += "?%s" % urllib.urlencode(query)
+
+        rv = self._request("GET", url, options=options)
         if options.get("raw", False):
             return rv.text
         ro = RestObject(self, resource_type, **rv)
@@ -270,7 +276,8 @@ class EndPoint(object):
                     continue
 
                 del query[k]
-                k += ".ref__m_eq" if isinstance(v[0], RestObjectBase) else "__m_eq"
+                if k != "__fields":  # Special case that does not require search modifier
+                    k += ".ref__m_eq" if isinstance(v[0], RestObjectBase) else "__m_eq"
                 query[k] = ",".join(_v._obj_ref if isinstance(_v, RestObjectBase) else _v for _v in v)
                 continue
 
@@ -387,6 +394,9 @@ class RestObject(RestObjectBase):
         super(RestObject, self).__setattr__(attr, val)
 
     def __getattr__(self, attr):
+        if attr not in self._current:
+            raise AttributeError(attr)
+        val = self._current[attr]
         val = self._current[attr]
         if self._ep.lazy_load_references and isinstance(val, RestObjectProxy):
             val = val()
