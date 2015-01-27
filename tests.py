@@ -25,10 +25,10 @@ class KrestTest(unittest.TestCase):
         krest.EndPoint.RetryCfg.not_reachable_pause = not_reachable_pause
         self.ep = krest.EndPoint(KREST_HOST, KREST_USER, KREST_PASSWORD, ssl_validate=False)
         self.system_state = self.ep.get("system/state", 1)
-        self.to_clean = deque()
+        self.to_clean = list()
 
     def tearDown(self):
-        for item in self.to_clean:
+        for item in self.to_clean[::-1]:
             try:
                 item.delete()
             except:
@@ -138,11 +138,11 @@ class KrestTest(unittest.TestCase):
         vg = self.ep.new("volume_groups",
                          name="unittest_vg%s" % index,
                          quota=0).save()
-        self.to_clean.appendleft(vg)
+        self.to_clean.append(vg)
         vol = self.ep.new("volumes",
                           name="%s_unittest_v%s" % (vg.name, index),
                           size=1*2**30, volume_group=vg).save()
-        self.to_clean.appendleft(vol)
+        self.to_clean.append(vol)
         return vg, vol
 
     def verify_vol_search(self, o_vols, n_vols):
@@ -362,7 +362,7 @@ class KrestTest(unittest.TestCase):
             self.fail("Failed to create object on non-existing endpoint, although validate_endpoints=False")
 
         hg = ep.new("host_groups", name="unittest_hg1").save()
-        self.to_clean.appendleft(hg)
+        self.to_clean.append(hg)
 
     @min_api_version("2.1.0")
     def test_sequences(self):
@@ -374,7 +374,7 @@ class KrestTest(unittest.TestCase):
 
         hg = self.ep.new("host_groups", name="unittest_hg1")
         hg.save(options={"sequence": sequences})
-        self.to_clean.appendleft(hg)
+        self.to_clean.append(hg)
 
         hg = self.ep.new("host_groups", name="unittest_hg2")
 
@@ -395,7 +395,7 @@ class KrestTest(unittest.TestCase):
             self.assertEqual(err.response.status_code, 409)
         sequences = {sid1: 2, sid2: 2, sid3: 2}
         hg.save(options={"sequence": sequences})
-        self.to_clean.appendleft(hg)
+        self.to_clean.append(hg)
 
     def test_get(self):
         """Test that ep.get is working"""
@@ -414,6 +414,32 @@ class KrestTest(unittest.TestCase):
         v = self.ep.search("volumes", id=1, __fields=["id", "name"]).hits[0]
         self.assertEqual(set(v._current.keys()), set(["id", "name"]))
 
+    @min_api_version("2.1.0")
+    def test_bulk_post(self):
+        self.create_volume_objects(index=1)
+        self.create_volume_objects(index=2)
+        retpol = self.ep.search("retention_policies").hits[0]
+
+        req = self.ep.new("snapshots", bulk=True)
+        self.assertIsInstance(req, krest.BulkRequest)
+        for i, vg in enumerate(self.ep.search("volume_groups", name__contains="unittest")):
+            s = self.ep.new("snapshots", short_name="unittest_snap%s" % i, source=vg, retention_policy=retpol)
+            req.add(s)
+
+        snapshots = req.post()
+        self.to_clean.extend(snapshots)
+
+        snap_names = [s.short_name for s in req]
+        self.assertEqual(len(snapshots), len(req))
+        for s in snapshots:
+            print "Snapshot: %s" % s
+            self.assertIn(s.short_name, snap_names)
+
+        req = self.ep.new("snapshots", bulk=True)
+        req.add(snapshots)
+        req.delete()
+        snapshots = self.ep.search("snapshots", name__contains_some="unittest_snap")
+        self.assertFalse(snapshots.hits, msg="Bulk delete did not work")
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)

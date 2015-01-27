@@ -14,12 +14,12 @@ import time
 
 # Enabling logging in your krest application
 # import krest
-#import logging
-#logging.addHandler(km_log_handler)
-#logging.getLogger("krest").setLevel(logging.DEBUG)
-#logging.getLogger("request").setLevel(logging.DEBUG)
+# import logging
+# logging.addHandler(km_log_handler)
+# logging.getLogger("krest").setLevel(logging.DEBUG)
+# logging.getLogger("request").setLevel(logging.DEBUG)
 
-#TODO: Parse errors properly
+# TODO: Parse errors properly
 
 
 class KrestProtocolError(Exception):
@@ -147,8 +147,12 @@ class EndPoint(object):
 
     def _prepare_request_data(self, req_args):
         if "data" in req_args:
-            req_args["data"] = json.dumps(req_args["data"], cls=KRestJSONEncoder)
-            logger.info("Request data: %s" % req_args["data"])
+            data = req_args["data"]
+            if data is not None:
+                req_args["data"] = json.dumps(data, cls=KRestJSONEncoder)
+                logger.info("Request data: %s" % req_args["data"])
+            else:
+                del req_args["data"]
 
     def _prepare_request_headers(self, req_args, options):
         headers = {'content-type': 'application/json'}
@@ -181,7 +185,7 @@ class EndPoint(object):
             req_args["timeout"] = self.req_cfg.timeout
             return
 
-    #noinspection PyArgumentList
+    # noinspection PyArgumentList
     @exception_wrapper
     def _request(self, method, endpoint, options={}, **kwargs):
         logger.info("Method: %s - Sending: %s" % (str(method), str(endpoint)))
@@ -207,7 +211,12 @@ class EndPoint(object):
 
     def _resource_url(self, resource_type):
         if self.validate_endpoints:
+            suffix = None
+            if resource_type.endswith("__bulk") or resource_type.endswith("__meta"):
+                resource_type, _, suffix = resource_type.rpartition("/")
             resource_path = self.resources[resource_type]
+            if suffix:
+                resource_path = "%s/%s" % (resource_path, suffix)
         else:
             resource_path = "/%s" % resource_type
         endpoint = self.api_prefix + resource_path
@@ -247,10 +256,15 @@ class EndPoint(object):
     def delete(self, ro, options={}):
         self._request("DELETE", ro._obj_url, options=options)
 
-    def new(self, resource_type, **attrs):
+    def new(self, resource_type, bulk=False, meta=False, **attrs):
         if self.validate_endpoints and resource_type not in self.resources:
             raise ValueError("Unknown resource_type: %s" % resource_type)
-        return RestObject.new(self, resource_type, **attrs)
+        if bulk:
+            if attrs:
+                raise ValueError("attrs do not go together with bulk")
+            return BulkRequest(self, resource_type, meta=meta)
+        else:
+            return RestObject.new(self, resource_type, meta=meta, **attrs)
 
     def discover(self, options={}):
         self.resources = dict()
@@ -292,10 +306,6 @@ class EndPoint(object):
                 return self.stream_response_to_file(data, options["fp"])
             return data
 
-        new_hits = list()
-        for hit in data["hits"]:
-            new_hits.append(RestObject(self, resource_type, **hit))
-        data["hits"] = new_hits
         rs = ResultSet(self, resource_type, data, query)
         return rs
 
@@ -360,9 +370,11 @@ class RestObjectProxy(RestObjectBase):
 
 
 class RestObject(RestObjectBase):
-    def __init__(self, ep, resource_type, **kwargs):
+    def __init__(self, ep, resource_type, meta=False, **kwargs):
         self._ep = ep
         self._resource_type = resource_type
+        if meta:
+            self._resource_type = self._resource_type.rstrip("/") + "/__meta"
         self._update(**kwargs)
 
     @classmethod
@@ -447,8 +459,11 @@ class ResultSet(object):
     """
     Simple object for working with results set.
     """
-    def __init__(self, ep, resource_type, data, query):
-        self.hits = data["hits"]
+    def __init__(self, ep, resource_type, data, query, convert_to_rest_objects=True):
+        if convert_to_rest_objects:
+            self.hits = [RestObject(ep, resource_type, **hit) for hit in data["hits"]]
+        else:
+            self.hits = data["hits"]
         self.total = data["total"]
         self.limit = data.get("limit", len(self.hits))
         self.offset = data.get("offset", 0)
@@ -468,7 +483,7 @@ class ResultSet(object):
 
     def next(self):
         if self._current_hit_index == len(self.hits):
-            if not self.autofetch:
+            if not self.autofetch or self._query is None:
                 raise StopIteration
             self.next_chunk()
             if not self.hits:
@@ -489,3 +504,49 @@ class ResultSet(object):
 
     def __nonzero__(self):
         return bool(self.hits)
+
+    def __len__(self):
+        return self.total
+
+
+class BulkRequest(object):
+    def __init__(self, ep, resource_type, meta=False):
+        self._ep = ep
+        self._resource_type = resource_type
+        self._suffix = "/__meta" if meta else "/__bulk"
+        self._items = list()
+
+    def add(self, item):
+        assert isinstance(item, (RestObject, ResultSet))
+        if item._resource_type != self._resource_type:
+            raise ValueError("%s object found. Expected %s" % (item._resource_type, self._resource_type))
+        if isinstance(item, RestObject):
+            self._items.append(item)
+        else:  # ResultSet
+            self._items.extend(item.hits)
+
+    def post(self, options={}):
+        data = self._request("POST", options=options)
+        return self._to_resultset(data)
+
+    def patch(self, options={}):
+        data = self._request("PATCH", options=options)
+        return self._to_resultset(data)
+
+    def delete(self, options={}):
+        self._request("DELETE", options=options)
+
+    def _to_resultset(self, data):
+        return ResultSet(self._ep, self._resource_type, data, query=None)
+
+    def _request(self, method, options={}):
+        resource_url = self._ep._resource_url(self._resource_type) + self._suffix
+        data = [i._current for i in self._items]
+        return self._ep._request(method, resource_url, data=data, options=options)
+
+    def __iter__(self):
+        for item in self._items:
+            yield item
+
+    def __len__(self):
+        return len(self._items)
