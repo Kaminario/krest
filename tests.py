@@ -37,9 +37,9 @@ class KrestTest(unittest.TestCase):
     def should_complete_in(seconds):
         def inner(func):
             @wraps(func)
-            def wrapper(self):
+            def wrapper(self, *args, **kwargs):
                 start = time.time()
-                func(self)
+                func(self, *args, **kwargs)
                 finish = time.time()
                 took = finish - start
                 self.assertTrue(took < seconds,
@@ -440,6 +440,44 @@ class KrestTest(unittest.TestCase):
         req.delete()
         snapshots = self.ep.search("snapshots", name__contains_some="unittest_snap")
         self.assertFalse(snapshots.hits, msg="Bulk delete did not work")
+
+    def test_stats_speed(self):
+        """Test that system performance fetching works fast"""
+
+        if self.system_state.state != "ONLINE":
+            self.skipTest("Can not test stats speed while system is ONLINE")
+
+        mapnum = self.ep.search("mappings", __limit=0).total
+        if mapnum < 50:
+            self.skipTest("Stats speed testing requies at least 50 mapped volumes")
+
+        should_complete_in = self.__class__.__dict__["should_complete_in"]
+
+        def search(*args, **kwargs):
+            self.ep.search("stats/system", __datapoints=12)
+        should_complete_in(1)(search)(self)
+
+        def search(*args, **kwargs):
+            self.ep.search("stats/system", __datapoints=12, __resolution="5m")
+        should_complete_in(1)(search)(self)
+
+        def search(*args, **kwargs):
+            self.ep.search("stats/system", __datapoints=12, __resolution="1h")
+        should_complete_in(1)(search)(self)
+
+        # Current stats for 100 volumes should not take more then a second
+        # If there are less then 100 mapping, just use second
+        t = max(1, float(mapnum)/100)
+
+        def search(*args, **kwargs):
+            self.ep.search("stats/volumes")
+        should_complete_in(t)(search)(self)
+
+        for i in [10, 100, 1000]:
+            def search(*args, **kwargs):
+                self.ep.search("stats/volumes", __datapoints=i)
+            should_complete_in(t+float(i)/8)(search)(self)
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
