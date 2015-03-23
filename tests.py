@@ -441,6 +441,20 @@ class KrestTest(unittest.TestCase):
         snapshots = self.ep.search("snapshots", name__contains_some="unittest_snap")
         self.assertFalse(snapshots.hits, msg="Bulk delete did not work")
 
+    def test_stats(self):
+        """Test that performance fetching works"""
+        self.ep.search("stats/system")
+        self.ep.search("stats/volumes")
+
+    @min_api_version("2.1.0")
+    def test_stats_fields(self):
+        """Test that performance fields filtering works"""
+        for endpoint in ["stats/system", "stats/volumes"]:
+            hits = self.ep.search(endpoint, __fields=["iops_avg", "throughput_avg"]).hits
+            if not hits:
+                self.skipTest("No IO in the system")
+            self.assertEqual(set(hits[0]._current.keys()), set(["iops_avg", "throughput_avg"]))
+
     def test_stats_speed(self):
         """Test that system performance fetching works fast"""
 
