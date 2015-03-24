@@ -79,8 +79,10 @@ class KrestTest(unittest.TestCase):
 
     @should_complete_in(30)
     def test_bad_request(self):
-        v = self.ep.new("volumes", name="CTRL")
-        self.assertRaises(HTTPError, v.save)
+        self.create_volume_objects()
+        v = self.ep.search("volumes").hits[0]
+        newv = self.ep.new("volumes", name=v.name)
+        self.assertRaises(HTTPError, newv.save)
 
     @should_complete_in(2)
     def test_not_found(self):
