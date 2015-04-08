@@ -83,7 +83,7 @@ For the full list of search modifiers please refer to the K2 REST API guide.
    This allows native usage of `RestObject` in your code, i.e. `ep.search("hosts", host_group=hg)`
 1. If a field value is instance of `ResultSet`, `list` or `tuple`, then list elements are converted to string by comma-joining
    and `__in` is added to the field name. This allows doing things like
-   `ep.search("hosts", host_group=[hg1, hg2])
+   `ep.search("hosts", host_group=[hg1, hg2])`
 
 ## Working with `ResultSet`s
 `ResultSet`s are returned by the  `.search()` method of `KrestEndPoint`. The number of results returned from the API 
