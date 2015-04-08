@@ -12,6 +12,11 @@ and monitoring Kaminario K2 all-flash arrays using Python.
 This readme file complements the Kaminario K2 REST API guide document. You can request 
 this document from the Kaminario support team.
 
+# Installation
+```
+pip install krest
+```
+
 # Usage
 
 Below are the examples of using krest. Again, we'll mostly explain how the Python interface
