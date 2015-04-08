@@ -1,3 +1,5 @@
+![PyPi version](https://img.shields.io/pypi/v/krest.svg)
+
 # krest
 
 The Kaminario REST (krest) is a client library that provides ORM like interface for working with 
@@ -9,6 +11,11 @@ and monitoring Kaminario K2 all-flash arrays using Python.
 
 This readme file complements the Kaminario K2 REST API guide document. You can request 
 this document from the Kaminario support team.
+
+# Installation
+```
+pip install krest
+```
 
 # Usage
 
