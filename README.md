@@ -1,3 +1,5 @@
+![PyPi version](https://img.shields.io/pypi/v/krest.svg)
+
 # krest
 
 The Kaminario REST (krest) is a client library that provides ORM like interface for working with 
