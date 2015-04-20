@@ -118,7 +118,7 @@ class EndPoint(object):
                         logger.error("Unknown error - Going to retry...")
                         retry = True
                 except Exception, err:
-                    logger.error("Caught unexpected error of type %s: %s", (type(err), str(err)))
+                    logger.error("Caught unexpected error of type %s: %s", type(err), str(err))
                     logger.error("The traceback is:\n%s", traceback.format_exc())
                     retry = False
                 if retry and time.time() - start_time < self.retry_cfg.not_reachable_timeout:
