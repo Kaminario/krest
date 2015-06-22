@@ -8,7 +8,7 @@
 
 from __future__ import absolute_import
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 import json
 import urlparse
@@ -255,7 +255,7 @@ class EndPoint(object):
         return ro
 
     def delete(self, ro, options={}):
-        self._request("DELETE", ro._obj_url, options=options)
+        self._request("DELETE", ro._obj_url, data=ro._changed, options=options)
 
     def new(self, resource_type, bulk=False, meta=False, **attrs):
         if self.validate_endpoints and resource_type not in self.resources:
