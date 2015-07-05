@@ -20,7 +20,7 @@ Please see the project homepage_ for full description.
 """
 
 setup(name="krest",
-      version="1.2.2",
+      version="1.2.3",
       py_modules=["krest"],
       install_requires=["requests >= 2.0.0"],
       maintainer="Zaar Hai",
