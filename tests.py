@@ -330,7 +330,7 @@ class KrestTest(unittest.TestCase):
         vols_single = []
 
         if rest_objects:
-            vgs = self.ep.search("volume_groups")
+            vgs = self.ep.search("volume_groups", __limit=2)
             for vg in vgs:
                 vols_single.extend(self.ep.search("volumes", volume_group=vg).hits)
             vols_multi = self.ep.search("volumes", volume_group=vgs).hits
@@ -338,7 +338,7 @@ class KrestTest(unittest.TestCase):
             vols = self.ep.search("volumes", __limit=2)
             for v in vols:
                 vols_single.extend(self.ep.search("volumes", name=v.name).hits)
-            vols_multi = self.ep.search("volumes", name=[vg.name for vg in vols]).hits
+            vols_multi = self.ep.search("volumes", name=[v.name for v in vols]).hits
 
         self.assertEqual(len(vols_multi), len(vols_single),
                          msg="Single and multi queries returned different amount of results")
