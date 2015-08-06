@@ -18,7 +18,7 @@ import logging
 import traceback
 
 import requests
-from requests.exceptions import ConnectionError, HTTPError
+from requests.exceptions import ConnectionError, HTTPError, Timeout
 import time
 
 
@@ -90,8 +90,8 @@ class EndPoint(object):
                 retry = False
                 try:
                     return func(self, *args, **kwargs)
-                except ConnectionError, err:
-                    logger.error("Connection Error: %s", str(err))
+                except (ConnectionError, Timeout) as err:
+                    logger.error("Connection/Timeout Error: %s", str(err))
                     if self.retry_cfg.on_connect_errors:
                         retry = True
                 except HTTPError, err:
