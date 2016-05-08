@@ -11,7 +11,6 @@ import os
 from functools import wraps, partial
 import time
 import logging
-from collections import deque
 import threading
 import random
 from distutils.version import StrictVersion
@@ -442,7 +441,6 @@ class KrestTest(unittest.TestCase):
         snap_names = [s.short_name for s in req]
         self.assertEqual(len(snapshots), len(req))
         for s in snapshots:
-            print "Snapshot: %s" % s
             self.assertIn(s.short_name, snap_names)
 
         req = self.ep.new("snapshots", bulk=True)
