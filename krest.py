@@ -11,8 +11,11 @@ from __future__ import absolute_import
 __version__ = "1.2.4"
 
 import json
-import urlparse
-import urllib
+try:  # Python2
+    from urlparse import urljoin
+    from urllib import urlencode
+except ImportError:  # Python3
+    from urllib.parse import urlencode, urljoin
 from functools import wraps
 import logging
 import traceback
@@ -86,6 +89,7 @@ class EndPoint(object):
             start_time = time.time()
             retry = True
             retry_too_fast = False
+            saved_exc = None
             while retry:
                 retry = False
                 try:
@@ -94,7 +98,8 @@ class EndPoint(object):
                     logger.error("Connection/Timeout Error: %s", str(err))
                     if self.retry_cfg.on_connect_errors:
                         retry = True
-                except HTTPError, err:
+                    saved_exc = err
+                except HTTPError as err:
                     err_str = str(err)
                     status_code = err.response.status_code
                     logger.error("HTTP Error: %s (response-status_code = %d)", err_str, status_code)
@@ -117,10 +122,12 @@ class EndPoint(object):
                     elif self.retry_cfg.on_other_errors:
                         logger.error("Unknown error - Going to retry...")
                         retry = True
-                except Exception, err:
+                    saved_exc = err
+                except Exception as err:
                     logger.error("Caught unexpected error of type %s: %s", type(err), str(err))
                     logger.error("The traceback is:\n%s", traceback.format_exc())
                     retry = False
+                    saved_exc = err
                 if retry and time.time() - start_time < self.retry_cfg.not_reachable_timeout:
                     logger.error("Sleeping for %s seconds", self.retry_cfg.not_reachable_pause)
                     time.sleep(self.retry_cfg.not_reachable_pause)
@@ -129,10 +136,10 @@ class EndPoint(object):
                     time.sleep(self.retry_cfg.toofast_pause)
                     retry = True
                 else:
-                    if isinstance(err, HTTPError):
-                        raise self._rebuild_err(err)
+                    if isinstance(saved_exc, HTTPError):
+                        raise self._rebuild_err(saved_exc)
                     else:
-                        raise err
+                        raise saved_exc
         return wrapped
 
     def _rebuild_err(self, exception):
@@ -221,7 +228,7 @@ class EndPoint(object):
         else:
             resource_path = "/%s" % resource_type
         endpoint = self.api_prefix + resource_path
-        return urlparse.urljoin(self.base_url, endpoint)
+        return urljoin(self.base_url, endpoint)
 
     def _obj_ref(self, resource_type, id):
         return "%s/%s" % (self.resources[resource_type], id)
@@ -234,7 +241,7 @@ class EndPoint(object):
         url = self._obj_url(resource_type, id)
         if query:
             self._serialize_query_objects(query)
-            url += "?%s" % urllib.urlencode(query)
+            url += "?%s" % urlencode(query)
 
         rv = self._request("GET", url, options=options)
         if options.get("raw", False):
@@ -271,7 +278,7 @@ class EndPoint(object):
     def discover(self, options={}):
         self.resources = dict()
         self.resource_endpoints = dict()
-        data = self._request("GET", urlparse.urljoin(self.base_url, self.api_prefix), options=options)
+        data = self._request("GET", urljoin(self.base_url, self.api_prefix), options=options)
         for k, v in data["resources"].items():
             self.resources[k] = v["url"]
             self.resource_endpoints[v["url"]] = k
@@ -300,7 +307,7 @@ class EndPoint(object):
     def search(self, resource_type, options={}, **query):
         self._serialize_query_objects(query)
         url = self._resource_url(resource_type)
-        url += "?%s" % urllib.urlencode(query)
+        url += "?%s" % urlencode(query)
 
         data = self._request("GET", url, options=options)
         if options.get("raw", False):
@@ -313,7 +320,7 @@ class EndPoint(object):
 
     def dump_all(self, fp, pretty=False, read_chunk=8192):
         """Dumps all objects in raw JSON to a provided file descriptor"""
-        url = urlparse.urljoin(self.base_url, self.full_endpoint)
+        url = urljoin(self.base_url, self.full_endpoint)
         if pretty:
             sep = "&" if "?" in url else "?"
             url = "%s%s__pretty" % (url, sep)
@@ -495,6 +502,8 @@ class ResultSet(object):
         rv = self.hits[self._current_hit_index]
         self._current_hit_index += 1
         return rv
+
+    __next__ = next  # P3k
 
     def next_chunk(self):
         if "__offset" in self._query:
