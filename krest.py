@@ -8,7 +8,7 @@
 
 from __future__ import absolute_import
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 import json
 try:  # Python2
