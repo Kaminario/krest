@@ -284,7 +284,7 @@ class EndPoint(object):
             self.resource_endpoints[v["url"]] = k
 
     def _serialize_query_objects(self, query):
-        for k, v in query.items():
+        for k, v in list(query.items()):
             if isinstance(v, RestObjectBase):
                 del query[k]
                 k = k + ".ref"
