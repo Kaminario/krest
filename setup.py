@@ -30,7 +30,7 @@ setup(name="krest",
       long_description=long_desc,
       download_url="https://github.com/Kaminario/krest/releases",
       license="Apache 2.0",
-      classifiers=(
+      classifiers=[
                    'Development Status :: 5 - Production/Stable',
                    'Intended Audience :: Developers',
                    'Natural Language :: English',
@@ -38,5 +38,5 @@ setup(name="krest",
                    'Programming Language :: Python',
                    'Programming Language :: Python :: 2.6',
                    'Programming Language :: Python :: 2.7',
-                   'Programming Language :: Python :: 3.4'),
+                   'Programming Language :: Python :: 3.4'],
       )
