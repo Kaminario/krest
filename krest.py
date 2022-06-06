@@ -415,6 +415,8 @@ class RestObject(RestObjectBase):
         super(RestObject, self).__setattr__(attr, val)
 
     def __getattr__(self, attr):
+        if attr == "_current":  # Object state not initialized
+            raise AttributeError(attr)
         if attr not in self._current:
             raise AttributeError(attr)
         val = self._current[attr]
