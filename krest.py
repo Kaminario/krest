@@ -74,7 +74,7 @@ class EndPoint(object):
         on_other_errors = True
         on_toofast_error = False
 
-    def __init__(self, k2_addr, auth: AuthBase=None, username=None, password=None, sdp_id=None,
+    def __init__(self, k2_addr, username=None, password=None, auth: AuthBase=None, sdp_id=None,
                  ssl_validate=True,
                  autodiscover=True,
                  lazy_load_references=True,
@@ -91,13 +91,12 @@ class EndPoint(object):
 
         if isinstance(auth, KrestBearerAuth) and not sdp_id:
             raise Exception("Can't use BearerAuth without sdp_id")
+        if sdp_id and not isinstance(auth, KrestBearerAuth):
+            raise Exception("Invalid args, sdp_id can't run without KrestBearerAuth")
         if auth and (username or password):
             raise Exception("Invalid args, Can't use both methods - Auth and username/password")
 
         self.auth = auth if auth else KrestBasicAuth(username, password)
-
-        if isinstance(auth, KrestBasicAuth) and sdp_id:
-            raise Exception("Invalid args, Can't use both - BasicAuth and sdp_id")
 
         self.base_url = "https://%s" % k2_addr
         if sdp_id:
