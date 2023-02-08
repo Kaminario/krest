@@ -2,15 +2,14 @@
 
 # krest
 
-The Kaminario REST (krest) is a client library that provides ORM like interface for working with 
-[Kaminario K2](http://kaminario.com/flash-array/) 
+The Silk REST (krest) is a client library that provides ORM like interface for working with Silk SDP
 REST API.
 
 Krest is written in Python and is aimed to provide rapid enablement of managing
-and monitoring Kaminario K2 all-flash arrays using Python.
+and monitoring SDPs all-flash arrays using Python.
 
-This readme file complements the Kaminario K2 REST API guide document. You can request 
-this document from the Kaminario support team.
+This readme file complements the Silk SDP REST API guide document. You can request 
+this document from the Silk support team.
 
 # Installation
 ```
@@ -19,15 +18,26 @@ pip install krest
 
 # Usage
 
+## login
 Below are the examples of using krest. Again, we'll mostly explain how the Python interface
-maps to a URL spec which is outlined in K2 REST API guide.
+maps to a URL spec which is outlined in SDP REST API guide.
 
-First you need to obtain an endpoint (connection) to your K2 machine:
+First you need to obtain an endpoint (connection) to your SDP:
 ```
 import krest
-ep = krest.EndPoint("IP address", "username", "password", ssl_validate=False)
+basic_auth = krest.KrestBasicAuth("username", "password")
+ep = krest.EndPoint("SDP IP address", auth=basic_auth, ssl_validate=False)
 ```
-If you configured your K2 machine with real SSL certificates, set `ssl_validate=True` in the above call.
+
+In case you are using an "app token" from Flex you should connect to your SDP via Flex:
+```
+import krest
+bearer_auth = krest.KrestBearerAuth("your token")
+ep = krest.EndPoint('Flex IP address', sdp_id="SDP ID", auth=bearer_auth, ssl_validate=False)
+```
+
+If you configured your SDP with real SSL certificates, set `ssl_validate=True` in the above call.
+
 
 ## Creating and changing objects
 
@@ -76,7 +86,7 @@ You can add search modifiers to field names:
 ```
 rv = ep.search("events", level="INFO", message__contains="h1", name__contains="HOST")
 ```
-For the full list of search modifiers please refer to the K2 REST API guide.
+For the full list of search modifiers please refer to the SDP REST API guide.
 
 ### Notes on field values
 1. If a field value is an instance of `RestObject`, it is converted to its reference url and `.ref` is added to the field name.
@@ -110,7 +120,7 @@ Once you have a `RestObject` at hand, simply call its `.delete()` method to dele
 # More examples for object creation and manipulation
 
 
-**NOTE:** All sizes in our K2 REST API are in kilobytes, with performance data being
+**NOTE:** All sizes in our SDP REST API are in kilobytes, with performance data being
 the only exception - it returns results in bytes.
 
 Create a volume-group

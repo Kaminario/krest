@@ -22,6 +22,7 @@ import traceback
 
 import requests
 from requests.exceptions import ConnectionError, HTTPError, Timeout
+from requests.auth import HTTPBasicAuth, AuthBase
 import time
 
 
@@ -39,6 +40,19 @@ class KRestJSONEncoder(json.JSONEncoder):
 
 
 logger = logging.getLogger("krest")
+
+
+class KrestBasicAuth(HTTPBasicAuth):
+    pass
+
+
+class KrestBearerAuth(AuthBase):
+    def __init__(self, token):
+        self.token = token
+
+    def __call__(self, r):
+        r.headers["authorization"] = "Bearer " + self.token
+        return r
 
 
 class EndPoint(object):
@@ -60,21 +74,34 @@ class EndPoint(object):
         on_other_errors = True
         on_toofast_error = False
 
-    def __init__(self, k2_addr, username, password, ssl_validate=True,
+    def __init__(self, k2_addr, username=None, password=None, auth: AuthBase=None, sdp_id=None,
+                 ssl_validate=True,
                  autodiscover=True,
                  lazy_load_references=True,
                  parse_references=True,
-                 validate_endpoints=True):
+                 validate_endpoints=True,
+                 ):
 
         self.full_endpoint = "%s/%s" % (self.api_prefix, "__full")
 
         self.lazy_load_references = lazy_load_references
         self.parse_references = parse_references
         self.validate_endpoints = validate_endpoints
-
         self.ssl_validate = ssl_validate
+
+        if isinstance(auth, KrestBearerAuth) and not sdp_id:
+            raise Exception("Can't use BearerAuth without sdp_id")
+        if sdp_id and not isinstance(auth, KrestBearerAuth):
+            raise Exception("Invalid args, sdp_id can't run without KrestBearerAuth")
+        if auth and (username or password):
+            raise Exception("Invalid args, Can't use both methods - Auth and username/password")
+
+        self.auth = auth if auth else KrestBasicAuth(username, password)
+
         self.base_url = "https://%s" % k2_addr
-        self.auth = (username, password)
+        if sdp_id:
+            self.api_prefix = "/rest/sdps/%s%s" % (sdp_id, self.api_prefix)
+
         self.session = requests.Session()
 
         self.req_cfg = self.ReqCfg()
