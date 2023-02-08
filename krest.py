@@ -8,7 +8,7 @@
 
 from __future__ import absolute_import
 
-__version__ = "1.3.3"
+__version__ = "1.3.4"
 
 import json
 try:  # Python2
@@ -455,7 +455,12 @@ class RestObject(RestObjectBase):
     def _update(self, **kwargs):
         self._current = dict()
         for k, v in kwargs.items():
-            if self._ep.parse_references and isinstance(v, dict) and "ref" in v:
+            if self._ep.parse_references and isinstance(v, list):
+                self._current[k] = []
+                for item in v:
+                    if isinstance(item, dict) and "ref" in item:
+                        self._current[k].append(RestObjectProxy(self._ep, item))
+            elif self._ep.parse_references and isinstance(v, dict) and "ref" in v:
                 self._current[k] = RestObjectProxy(self._ep, v)
             else:
                 self._current[k] = v
