@@ -19,6 +19,7 @@ except ImportError:  # Python3
 from functools import wraps
 import logging
 import traceback
+from collections import UserDict
 
 import requests
 from requests.exceptions import ConnectionError, HTTPError, Timeout
@@ -37,6 +38,14 @@ class KRestJSONEncoder(json.JSONEncoder):
         if isinstance(o, (RestObject, RestObjectProxy)):
             return o._ref
         return super(KRestJSONEncoder, self).default(o)
+
+
+class NoPasswordPrintDict(UserDict):
+    PASSWORD_STR_LIST = ["password", "current_user_password", "new_password"]
+
+    def __repr__(self):
+        filtered_dict = {k: v if k not in self.PASSWORD_STR_LIST else "*" * len(v) for k, v in self.items()}
+        return repr(filtered_dict)
 
 
 logger = logging.getLogger("krest")
@@ -82,6 +91,16 @@ class EndPoint(object):
                  validate_endpoints=True,
                  ):
 
+        # args validation:
+        if isinstance(auth, KrestBearerAuth) and not sdp_id:
+            raise ValueError("Can't use BearerAuth without sdp_id")
+        if sdp_id and not isinstance(auth, KrestBearerAuth):
+            raise ValueError("Invalid args, sdp_id can't run without KrestBearerAuth")
+        if auth and (username or password):
+            raise ValueError("Invalid args, Can't use both methods - Auth and username/password")
+        if not autodiscover and validate_endpoints:
+            raise ValueError("Invalid args, Can't use validate_endpoints without autodiscover")
+
         self.full_endpoint = "%s/%s" % (self.api_prefix, "__full")
 
         self.lazy_load_references = lazy_load_references
@@ -89,12 +108,7 @@ class EndPoint(object):
         self.validate_endpoints = validate_endpoints
         self.ssl_validate = ssl_validate
 
-        if isinstance(auth, KrestBearerAuth) and not sdp_id:
-            raise Exception("Can't use BearerAuth without sdp_id")
-        if sdp_id and not isinstance(auth, KrestBearerAuth):
-            raise Exception("Invalid args, sdp_id can't run without KrestBearerAuth")
-        if auth and (username or password):
-            raise Exception("Invalid args, Can't use both methods - Auth and username/password")
+
 
         self.auth = auth if auth else KrestBasicAuth(username, password)
 
@@ -185,7 +199,7 @@ class EndPoint(object):
             data = req_args["data"]
             if data is not None:
                 req_args["data"] = json.dumps(data, cls=KRestJSONEncoder)
-                logger.info("Request data: %s" % req_args["data"])
+                logger.info("Request data: %s" % NoPasswordPrintDict(data))
             else:
                 del req_args["data"]
 
