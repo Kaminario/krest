@@ -8,7 +8,7 @@
 
 from __future__ import absolute_import
 
-__version__ = "1.3.5"
+__version__ = "1.3.6"
 
 import json
 try:  # Python2
@@ -25,6 +25,8 @@ import requests
 from requests.exceptions import ConnectionError, HTTPError, Timeout
 from requests.auth import HTTPBasicAuth, AuthBase
 import time
+
+logger = logging.getLogger("krest")
 
 
 class KrestProtocolError(Exception):
@@ -48,7 +50,16 @@ class NoPasswordPrintDict(UserDict):
         return repr(filtered_dict)
 
 
-logger = logging.getLogger("krest")
+def hide_password(data):
+    try:
+        if isinstance(data, dict):
+            return NoPasswordPrintDict(data)
+        if isinstance(data, list):
+            return [NoPasswordPrintDict(bulk_dict) for bulk_dict in data]
+    except ValueError:
+        logger.warning("Unrecognized request data. can't hide password.")
+
+    return data
 
 
 class KrestBasicAuth(HTTPBasicAuth):
@@ -107,9 +118,6 @@ class EndPoint(object):
         self.parse_references = parse_references
         self.validate_endpoints = validate_endpoints
         self.ssl_validate = ssl_validate
-
-
-
         self.auth = auth if auth else KrestBasicAuth(username, password)
 
         self.base_url = "https://%s" % k2_addr
@@ -199,7 +207,7 @@ class EndPoint(object):
             data = req_args["data"]
             if data is not None:
                 req_args["data"] = json.dumps(data, cls=KRestJSONEncoder)
-                logger.info("Request data: %s" % NoPasswordPrintDict(data))
+                logger.info("Request data: %s" % hide_password(data))
             else:
                 del req_args["data"]
 
