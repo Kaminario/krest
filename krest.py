@@ -11,6 +11,7 @@ from __future__ import absolute_import
 __version__ = "1.3.6"
 
 import json
+
 try:  # Python2
     from urlparse import urljoin
     from urllib import urlencode
@@ -25,6 +26,7 @@ import requests
 from requests.exceptions import ConnectionError, HTTPError, Timeout
 from requests.auth import HTTPBasicAuth, AuthBase
 import time
+import threading
 
 logger = logging.getLogger("krest")
 
@@ -76,7 +78,6 @@ class KrestBearerAuth(AuthBase):
 
 
 class EndPoint(object):
-
     api_prefix = "/api/v2"
 
     class ReqCfg(object):
@@ -84,7 +85,7 @@ class EndPoint(object):
 
     class RetryCfg(object):
         not_reachable_timeout = 600
-        not_reachable_pause = 20
+        not_reachable_pause = 120
         toofast_pause = .5
 
         on_connect_errors = True
@@ -94,7 +95,34 @@ class EndPoint(object):
         on_other_errors = True
         on_toofast_error = False
 
-    def __init__(self, k2_addr, username=None, password=None, auth: AuthBase=None, sdp_id=None,
+    class TokenBucket:
+        def __init__(self, max_tokens, refill_rate):
+            self.max_tokens = max_tokens
+            self.refill_rate = refill_rate
+            self.tokens = max_tokens
+            self.lock = threading.Lock()
+            self.last_refill_timestamp = time.time()
+
+        def _refill(self):
+
+            current = time.time()
+            elapsed = current - self.last_refill_timestamp
+            self.tokens = min(self.max_tokens, self.tokens + elapsed * self.refill_rate)
+            self.last_refill_timestamp = current
+
+        def consume(self, tokens=1):
+            with self.lock:
+                self._refill()
+                if self.tokens >= tokens:
+                    self.tokens -= tokens
+                    return True
+                return False
+
+        def wait_for_token(self):
+            while not self.consume():
+                time.sleep(0.01)
+
+    def __init__(self, k2_addr, username=None, password=None, auth: AuthBase = None, sdp_id=None,
                  ssl_validate=True,
                  autodiscover=True,
                  lazy_load_references=True,
@@ -128,6 +156,8 @@ class EndPoint(object):
 
         self.req_cfg = self.ReqCfg()
         self.retry_cfg = self.RetryCfg()
+        self.semaphore = threading.Semaphore(100)
+        self.token_bucket = self.TokenBucket(max_tokens=50, refill_rate=10)
 
         if autodiscover:
             self.discover()
@@ -189,6 +219,7 @@ class EndPoint(object):
                         raise self._rebuild_err(saved_exc)
                     else:
                         raise saved_exc
+
         return wrapped
 
     def _rebuild_err(self, exception):
@@ -245,26 +276,29 @@ class EndPoint(object):
     # noinspection PyArgumentList
     @exception_wrapper
     def _request(self, method, endpoint, options={}, **kwargs):
-        logger.info("Method: %s - Sending: %s" % (str(method), str(endpoint)))
+        self.token_bucket.wait_for_token()
+        with self.semaphore:
+            logger.info("Method: %s - Sending: %s" % (str(method), str(endpoint)))
 
-        self._prepare_request_timeout(kwargs, options)
-        self._prepare_request_data(kwargs)
-        headers = self._prepare_request_headers(kwargs, options)
+            self._prepare_request_timeout(kwargs, options)
+            self._prepare_request_data(kwargs)
+            headers = self._prepare_request_headers(kwargs, options)
 
-        raw = options.get("raw", False)
-        kwargs["stream"] = options.get("stream", True) if raw else options.get("stream", False)
+            raw = options.get("raw", False)
+            kwargs["stream"] = options.get("stream", True) if raw else options.get("stream", False)
 
-        rv = self.session.request(method, endpoint, auth=self.auth, verify=self.ssl_validate, headers=headers, **kwargs)
-        rv.raise_for_status()
+            rv = self.session.request(method, endpoint, auth=self.auth, verify=self.ssl_validate, headers=headers,
+                                      **kwargs)
+            rv.raise_for_status()
 
-        # WARNING: Evaluating value of rv.content will negate the effect of stream=True
-        if not raw:
-            if rv.content:
-                rv = rv.json()
-            elif method != "DELETE":
-                raise KrestProtocolError("Recieved response without content", rv)
-        logger.info("Returned value is: %s", rv)
-        return rv
+            # WARNING: Evaluating value of rv.content will negate the effect of stream=True
+            if not raw:
+                if rv.content:
+                    rv = rv.json()
+                elif method != "DELETE":
+                    raise KrestProtocolError("Recieved response without content", rv)
+            logger.info("Returned value is: %s", rv)
+            return rv
 
     def _resource_url(self, resource_type):
         if self.validate_endpoints:
@@ -526,6 +560,7 @@ class ResultSet(object):
     """
     Simple object for working with results set.
     """
+
     def __init__(self, ep, resource_type, data, query, convert_to_rest_objects=True):
         if convert_to_rest_objects:
             self.hits = [RestObject(ep, resource_type, **hit) for hit in data["hits"]]
@@ -584,6 +619,8 @@ class BulkRequest(object):
         self._resource_type = resource_type
         self._suffix = "/__meta" if meta else "/__bulk"
         self._items = list()
+        import threading
+        self.semaphore = threading.Semaphore(100)
 
     def add(self, item):
         assert isinstance(item, (RestObject, ResultSet))
@@ -609,9 +646,10 @@ class BulkRequest(object):
         return ResultSet(self._ep, self._resource_type, data, query=None)
 
     def _request(self, method, options={}):
-        resource_url = self._ep._resource_url(self._resource_type) + self._suffix
-        data = [i._current for i in self._items]
-        return self._ep._request(method, resource_url, data=data, options=options)
+        with self.semaphore:
+            resource_url = self._ep._resource_url(self._resource_type) + self._suffix
+            data = [i._current for i in self._items]
+            return self._ep._request(method, resource_url, data=data, options=options)
 
     def __iter__(self):
         for item in self._items:
