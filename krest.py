@@ -531,6 +531,17 @@ class RestObject(RestObjectBase):
         self._current["user_tags"].append(ObjectUserModelTag(self, { "key": key, "value": value, "is_inheritable": is_inheritable, "is_automatic": False, "possession_type": None}))
         self.on_user_tags_change()
 
+    def get_user_tag(self, tag_key):
+        if "user_tags" not in self._current:
+            return None
+        for user_tag in self._current["user_tags"]:
+            if user_tag.key == tag_key:
+                return user_tag
+        return None
+
+    def has_user_tag(self, tag_key):
+        return self.get_user_tag(tag_key) is not None
+
     def __setattr__(self, attr, val):
         if not attr.startswith("_"):
             if (attr == "user_tags") and (val is not []):
