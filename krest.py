@@ -478,7 +478,7 @@ class RestObject(RestObjectBase):
         return obj
 
     def save(self, options={}):
-        user_tags_changed = self._user_tags_changed
+        user_tags_changed = self._user_tags_changed if "user_tags" in self._current else None
         if hasattr(self, "id"):
             # construct things that changed and run patch
             self._ep.patch(self, options=options)
