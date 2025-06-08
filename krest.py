@@ -28,12 +28,15 @@ import time
 
 logger = logging.getLogger("krest")
 
+user_tags_discovered_TEMPORARY_FLAG_UNTIL_API_VERSION_INCREASED_FOR_USER_TAGS = False
+api_version = 0
+def api_supports_user_tags_feature():
+    return user_tags_discovered_TEMPORARY_FLAG_UNTIL_API_VERSION_INCREASED_FOR_USER_TAGS or (api_version == "3.0.7")
 
 class KrestProtocolError(Exception):
     def __init__(self, message, response):
         super(KrestProtocolError, self).__init__(message)
         self.response = response
-
 
 class KRestJSONEncoder(json.JSONEncoder):
     def default(self, o):
@@ -131,6 +134,10 @@ class EndPoint(object):
 
         if autodiscover:
             self.discover()
+
+        api_version = getattr(self.get("system/state", 1), "rest_api_version", None)
+        pass
+
 
     def exception_wrapper(func):
         @wraps(func)
@@ -332,6 +339,9 @@ class EndPoint(object):
         self.resource_endpoints = dict()
         data = self._request("GET", urljoin(self.base_url, self.api_prefix), options=options)
         for k, v in data["resources"].items():
+            if k == "user_tags":
+                global user_tags_discovered_TEMPORARY_FLAG_UNTIL_API_VERSION_INCREASED_FOR_USER_TAGS
+                user_tags_discovered_TEMPORARY_FLAG_UNTIL_API_VERSION_INCREASED_FOR_USER_TAGS = True
             self.resources[k] = v["url"]
             self.resource_endpoints[v["url"]] = k
 
@@ -444,7 +454,7 @@ class RestObjectProxy(RestObjectBase):
         return ro
 
     def __eq__(self, other, shallow=None):
-        # "shallow" parameter is supported for compatability -
+        # "shallow" parameter is supported for compatibility -
         # proxies can only be compared in shallow mode
         if not isinstance(other, (RestObject, RestObjectProxy)):
             return False
@@ -469,35 +479,6 @@ class RestObject(RestObjectBase):
             self._resource_type = self._resource_type.rstrip("/") + "/__meta"
         self._update(**kwargs)
 
-    @classmethod
-    def new(cls, ep, resource_type, **kwargs):
-        obj = cls(ep, resource_type, **kwargs)
-        obj._changed = obj._current
-        if obj.get_user_tags_object_type() is not None:
-            obj._current["user_tags"] = list()
-        return obj
-
-    def save(self, options={}):
-        user_tags_changed = self._user_tags_changed if "user_tags" in self._current else None
-        if hasattr(self, "id"):
-            # construct things that changed and run patch
-            self._ep.patch(self, options=options)
-        else:
-            self._ep.post(self, options=options)
-        if user_tags_changed:
-            self._ep.patch_object_user_tags(user_tags_changed)
-            self.refresh()
-        return self
-
-    def delete(self, options={}):
-        return self._ep.delete(self, options=options)
-
-    def refresh(self, options={}):
-        if not hasattr(self, "id"):
-            return
-        new_obj = self._ep.get(self._resource_type, self.id, options=options)
-        self._update(**new_obj._current)
-
     def get_user_tags_object_type(self):
         if self._resource_type == "host_groups":
             return "host_group"
@@ -517,6 +498,38 @@ class RestObject(RestObjectBase):
         else:
             return None
 
+    def supports_user_tags_feature(self):
+        return api_supports_user_tags_feature() and (self.get_user_tags_object_type() is not None)
+
+    @classmethod
+    def new(cls, ep, resource_type, **kwargs):
+        obj = cls(ep, resource_type, **kwargs)
+        obj._changed = obj._current
+        if obj.supports_user_tags_feature():
+            obj._current["user_tags"] = list()
+        return obj
+
+    def save(self, options={}):
+        user_tags_changed = self._user_tags_changed if self.supports_user_tags_feature() else dict()
+        if hasattr(self, "id"):
+            # construct things that changed and run patch
+            self._ep.patch(self, options=options)
+        else:
+            self._ep.post(self, options=options)
+        if user_tags_changed:
+            self._ep.patch_object_user_tags(user_tags_changed)
+            self.refresh()
+        return self
+
+    def delete(self, options={}):
+        return self._ep.delete(self, options=options)
+
+    def refresh(self, options={}):
+        if not hasattr(self, "id"):
+            return
+        new_obj = self._ep.get(self._resource_type, self.id, options=options)
+        self._update(**new_obj._current)
+
     def on_user_tags_change(self):
         self._user_tags_changed = {}
         self._user_tags_changed["action"] = "set_object_tags"
@@ -528,24 +541,31 @@ class RestObject(RestObjectBase):
             model_tag.fill_tag_params(self._user_tags_changed["tags"])
 
     def add_user_tag(self, key, value, is_inheritable):
+        if not self.supports_user_tags_feature():
+            raise NotImplementedError
         self._current["user_tags"].append(ObjectUserModelTag(self, { "key": key, "value": value, "is_inheritable": is_inheritable, "is_automatic": False, "possession_type": None}))
         self.on_user_tags_change()
 
     def get_user_tag(self, tag_key):
-        if "user_tags" not in self._current:
-            return None
+        if not self.supports_user_tags_feature():
+            raise NotImplementedError
         for user_tag in self._current["user_tags"]:
             if user_tag.key == tag_key:
                 return user_tag
         return None
 
     def has_user_tag(self, tag_key):
+        if not self.supports_user_tags_feature():
+            raise NotImplementedError
         return self.get_user_tag(tag_key) is not None
 
     def __setattr__(self, attr, val):
         if not attr.startswith("_"):
-            if (attr == "user_tags") and (val is not []):
-                raise ValueError("Can't set directly user_tags property. Please use add_user_tag method.")
+            if attr == "user_tags":
+                if not self.supports_user_tags_feature():
+                    raise NotImplementedError
+                if val is not []:
+                    raise ValueError("Can't set directly user_tags property. Please use add_user_tag method.")
             self._changed[attr] = self._current[attr] = val
             return
         super(RestObject, self).__setattr__(attr, val)
@@ -582,7 +602,8 @@ class RestObject(RestObjectBase):
             else:
                 self._current[k] = v
         self._changed = dict()
-        if "user_tags" in self._current:
+
+        if self.supports_user_tags_feature():
             self._user_tags_changed = dict()
 
     def _get_raw(self, attr):
