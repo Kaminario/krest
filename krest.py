@@ -413,19 +413,22 @@ class RestObjectBase(object):
 
 class ObjectUserModelTag(object):
     def __init__(self, taggable_object, tag_params):
+        self._invalid = False
         self._taggable_object = taggable_object
         self.key = tag_params["key"]
         self.value = tag_params["value"]
         self.is_inheritable = tag_params["is_inheritable"]
-        self.is_automatic = tag_params["is_automatic"]
-        self._possession_type = tag_params["possession_type"] # Allows to know legal operations on the tag. In case of a new tag, will be None. It may not be OWNER, as this key was deleted before added again.
+        self.possession_type = tag_params["possession_type"] # Allows to know legal operations on the tag. In case of a new tag, will be None. It may not be OWNER, as this key was deleted before added again.
+        self._is_automatic = tag_params["is_automatic"]
 
     def __str__(self):
         return "%s = %s" % (self.key, self.value)
 
     def __setattr__(self, attr, val):
+        if (attr != "_invalid") and self._invalid:
+            raise ValueError("This tag is no longer valid, as the object containing it - was stored. Please re-obtain the tag from the object.")
         super().__setattr__(attr, val)
-        if not attr.startswith("_"):
+        if attr != "_invalid":
             self._taggable_object.on_user_tags_change()
             return
 
@@ -433,14 +436,20 @@ class ObjectUserModelTag(object):
         self._taggable_object._current["user_tags"].remove(self)
         self._taggable_object.on_user_tags_change()
 
+    def replace_taggable_object(self, updated_taggable_object):
+        self._taggable_object = updated_taggable_object
+
+
     def fill_tag_params(self, tags_list):
         tags_list.append({
             "key": self.key,
             "value": self.value,
             "is_inheritable": self.is_inheritable,
-            "is_automatic": self.is_automatic
+            "is_automatic": self._is_automatic
         })
 
+    def _invalidate(self):
+        self._invalid = True
 
 class RestObjectProxy(RestObjectBase):
     def __init__(self, ep, ref):
@@ -510,13 +519,15 @@ class RestObject(RestObjectBase):
         return obj
 
     def save(self, options={}):
-        user_tags_changed = self._user_tags_changed if self.supports_user_tags_feature() else dict()
+        user_tags_changed = self._user_tags_changed if self.supports_user_tags_feature() and hasattr(self, "id") else dict()
         if hasattr(self, "id"):
             # construct things that changed and run patch
             self._ep.patch(self, options=options)
         else:
             self._ep.post(self, options=options)
         if user_tags_changed:
+            for user_tag in self._current["user_tags"]:
+                user_tag._invalidate()
             self._ep.patch_object_user_tags(user_tags_changed)
             self.refresh()
         return self
@@ -540,12 +551,6 @@ class RestObject(RestObjectBase):
         for model_tag in self._current["user_tags"]:
             model_tag.fill_tag_params(self._user_tags_changed["tags"])
 
-    def add_user_tag(self, key, value, is_inheritable):
-        if not self.supports_user_tags_feature():
-            raise NotImplementedError
-        self._current["user_tags"].append(ObjectUserModelTag(self, { "key": key, "value": value, "is_inheritable": is_inheritable, "is_automatic": False, "possession_type": None}))
-        self.on_user_tags_change()
-
     def get_user_tag(self, tag_key):
         if not self.supports_user_tags_feature():
             raise NotImplementedError
@@ -558,6 +563,30 @@ class RestObject(RestObjectBase):
         if not self.supports_user_tags_feature():
             raise NotImplementedError
         return self.get_user_tag(tag_key) is not None
+
+    def add_user_tag(self, key, value, is_inheritable):
+        if not self.supports_user_tags_feature():
+            raise NotImplementedError
+        if not hasattr(self, "id"):
+            raise ValueError("Can't add a user tags to a new, non-stored object. Please store the object first.")
+        self._current["user_tags"].append(ObjectUserModelTag(self, { "key": key, "value": value, "is_inheritable": is_inheritable, "is_automatic": False, "possession_type": None}))
+        self.on_user_tags_change()
+
+    def remove_user_tag(self, tag_key):
+        if not self.supports_user_tags_feature():
+            raise NotImplementedError
+        self.get_user_tag(tag_key).remove()
+
+    def modify_user_tag(self, tag_key, new_key=None, new_value=None, new_is_inheritable=None):
+        if not self.supports_user_tags_feature():
+            raise NotImplementedError
+        user_tag = self.get_user_tag(tag_key)
+        if new_key is not None:
+            user_tag.key = new_key
+        if new_value is not None:
+            user_tag.value = new_value
+        if new_is_inheritable is not None:
+            user_tag.is_inheritable = new_is_inheritable
 
     def __setattr__(self, attr, val):
         if not attr.startswith("_"):
@@ -589,6 +618,7 @@ class RestObject(RestObjectBase):
                 self._current["user_tags"] = []
                 for item in v:
                     if type(item) is ObjectUserModelTag:
+                        item.replace_taggable_object(self)
                         self._current["user_tags"].append(item)
                     else:
                         self._current["user_tags"].append(ObjectUserModelTag(self, item))
