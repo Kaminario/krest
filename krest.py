@@ -132,10 +132,6 @@ class EndPoint(object):
         if autodiscover:
             self.discover()
 
-        global api_version
-        api_version = getattr(self.get("system/state", 1), "rest_api_version", None)
-
-
     def exception_wrapper(func):
         @wraps(func)
         def wrapped(self, *args, **kwargs):
