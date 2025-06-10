@@ -38,6 +38,7 @@ class KrestProtocolError(Exception):
         super(KrestProtocolError, self).__init__(message)
         self.response = response
 
+
 class KRestJSONEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, (RestObject, RestObjectProxy)):
@@ -135,8 +136,8 @@ class EndPoint(object):
         if autodiscover:
             self.discover()
 
+        global api_version
         api_version = getattr(self.get("system/state", 1), "rest_api_version", None)
-        pass
 
 
     def exception_wrapper(func):
