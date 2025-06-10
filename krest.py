@@ -440,7 +440,6 @@ class ObjectUserModelTag(object):
     def replace_taggable_object(self, updated_taggable_object):
         self._taggable_object = updated_taggable_object
 
-
     def fill_tag_params(self, tags_list):
         tags_list.append({
             "key": self.key,
@@ -518,15 +517,17 @@ class RestObject(RestObjectBase):
         return obj
 
     def save(self, options={}):
-        user_tags_changed = self._user_tags_changed if self.supports_user_tags_feature() and hasattr(self, "id") else dict()
+        user_tags_changed = dict()
+        if self.supports_user_tags_feature() and hasattr(self, "id"):
+            user_tags_changed = self._user_tags_changed
+            for user_tag in self._current["user_tags"]:
+                user_tag._invalidate()
         if hasattr(self, "id"):
             # construct things that changed and run patch
             self._ep.patch(self, options=options)
         else:
             self._ep.post(self, options=options)
         if user_tags_changed:
-            for user_tag in self._current["user_tags"]:
-                user_tag._invalidate()
             self._ep.patch_object_user_tags(user_tags_changed)
             self.refresh()
         return self
