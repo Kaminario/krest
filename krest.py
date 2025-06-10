@@ -515,8 +515,6 @@ class RestObject(RestObjectBase):
     def new(cls, ep, resource_type, **kwargs):
         obj = cls(ep, resource_type, **kwargs)
         obj._changed = obj._current
-        if obj.supports_user_tags_feature():
-            obj._current["user_tags"] = list()
         return obj
 
     def save(self, options={}):
