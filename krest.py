@@ -496,8 +496,11 @@ class RestObject(RestObjectBase):
         else:
             return None
 
+    def supports_user_tags(self):
+        return self.get_user_tags_object_type() is not None
+
     def contains_user_tags(self):
-        return "user_tags" in self.current
+        return "user_tags" in self._current
 
     @classmethod
     def new(cls, ep, resource_type, **kwargs):
@@ -507,7 +510,7 @@ class RestObject(RestObjectBase):
 
     def save(self, options={}):
         user_tags_changed = dict()
-        if self.contains_user_tags():
+        if self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
             user_tags_changed = self._user_tags_changed
             for user_tag in self._current["user_tags"]:
                 user_tag._invalidate()
@@ -541,7 +544,7 @@ class RestObject(RestObjectBase):
             model_tag.fill_tag_params(self._user_tags_changed["tags"])
 
     def get_user_tag(self, tag_key):
-        if not self.contains_user_tags():
+        if not self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
             raise NotImplementedError
         for user_tag in self._current["user_tags"]:
             if user_tag.key == tag_key:
@@ -549,12 +552,12 @@ class RestObject(RestObjectBase):
         return None
 
     def has_user_tag(self, tag_key):
-        if not self.contains_user_tags():
+        if not self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
             raise NotImplementedError
         return self.get_user_tag(tag_key) is not None
 
     def add_user_tag(self, key, value, is_inheritable):
-        if not self.contains_user_tags():
+        if not self.supports_user_tags(): # Must check "supports" rather than "contains" to provide correct error for a new object
             raise NotImplementedError
         if not hasattr(self, "id"):
             raise ValueError("Can't add a user tags to a new, non-stored object. Please store the object first.")
@@ -562,12 +565,12 @@ class RestObject(RestObjectBase):
         self.on_user_tags_change()
 
     def remove_user_tag(self, tag_key):
-        if not self.contains_user_tags():
+        if not self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
             raise NotImplementedError
         self.get_user_tag(tag_key).remove()
 
     def modify_user_tag(self, tag_key, new_key=None, new_value=None, new_is_inheritable=None):
-        if not self.contains_user_tags():
+        if not self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
             raise NotImplementedError
         user_tag = self.get_user_tag(tag_key)
         if new_key is not None:
@@ -580,7 +583,7 @@ class RestObject(RestObjectBase):
     def __setattr__(self, attr, val):
         if not attr.startswith("_"):
             if attr == "user_tags":
-                if self.get_user_tags_object_type() is None: # this type does not support user tags
+                if not self.supports_user_tags():
                     raise NotImplementedError
                 if val is not []:
                     raise ValueError("Can't set directly user_tags property. Please use add_user_tag method.")
@@ -622,7 +625,7 @@ class RestObject(RestObjectBase):
                 self._current[k] = v
         self._changed = dict()
 
-        if self.contains_user_tags():
+        if self.supports_user_tags(): # Can be "contains" either, but logically is better.
             self._user_tags_changed = dict()
 
     def _get_raw(self, attr):
