@@ -484,13 +484,10 @@ class RestObject(RestObjectBase):
             elif isinstance(v, list):
                 self._current[k] = []
                 for item in v:
-                    if isinstance(item, dict):
-                        if self._ep.parse_references and "ref" in item:
-                            self._current[k].append(RestObjectProxy(self._ep, item))
-                        else:
-                            self._current[k].append(RestObject(self._ep, k, **item)) # NEW FUNCTIONALITY
+                    if isinstance(item, dict) and self._ep.parse_references and "ref" in item:
+                        self._current[k].append(RestObjectProxy(self._ep, item))
                     else:
-                        self._current[k].append(item) # NEW FUNCTIONALITY
+                        self._current[k].append(item)
             else:
                 self._current[k] = v
         self._changed = dict()
