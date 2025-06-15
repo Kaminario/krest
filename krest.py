@@ -310,9 +310,6 @@ class EndPoint(object):
         ro._update(**rv)
         return ro
 
-    def patch_object_user_tags(self, parameters):
-        self._request("PATCH", self._obj_url("user_tags",0), data=parameters)
-
     def delete(self, ro, options={}):
         data = ro._changed or None  # Don't send empty {} to server
         self._request("DELETE", ro._obj_url, data=data, options=options)
@@ -400,46 +397,6 @@ class RestObjectBase(object):
     def _ref(self):
         return {"ref": self._obj_ref}
 
-
-class ObjectUserModelTag(object):
-    def __init__(self, taggable_object, tag_params):
-        self._invalid = False
-        self._taggable_object = taggable_object
-        self.key = tag_params["key"]
-        self.value = tag_params["value"]
-        self.is_inheritable = tag_params["is_inheritable"]
-        self.possession_type = tag_params["possession_type"] # Allows to know legal operations on the tag. In case of a new tag, will be None. It may not be OWNER, as this key was deleted before added again.
-        self._is_automatic = tag_params["is_automatic"]
-
-    def __str__(self):
-        return "%s = %s" % (self.key, self.value)
-
-    def __setattr__(self, attr, val):
-        if (attr != "_invalid") and self._invalid:
-            raise ValueError("This tag is no longer valid, as the object containing it - was stored. Please re-obtain the tag from the object.")
-        super().__setattr__(attr, val)
-        if attr != "_invalid":
-            self._taggable_object.on_user_tags_change()
-            return
-
-    def remove(self):
-        self._taggable_object._current["user_tags"].remove(self)
-        self._taggable_object.on_user_tags_change()
-
-    def replace_taggable_object(self, updated_taggable_object):
-        self._taggable_object = updated_taggable_object
-
-    def fill_tag_params(self, tags_list):
-        tags_list.append({
-            "key": self.key,
-            "value": self.value,
-            "is_inheritable": self.is_inheritable,
-            "is_automatic": self._is_automatic
-        })
-
-    def _invalidate(self):
-        self._invalid = True
-
 class RestObjectProxy(RestObjectBase):
     def __init__(self, ep, ref):
         self._ep = ep
@@ -477,31 +434,6 @@ class RestObject(RestObjectBase):
             self._resource_type = self._resource_type.rstrip("/") + "/__meta"
         self._update(**kwargs)
 
-    def get_user_tags_object_type(self):
-        if self._resource_type == "host_groups":
-            return "host_group"
-        elif self._resource_type == "hosts":
-            return "host"
-        elif self._resource_type == "volume_groups":
-            return "volume_group"
-        elif self._resource_type == "volumes":
-            return "volume"
-        elif self._resource_type == "replication_sessions":
-            return "replication_session"
-        elif self._resource_type == "snapshots":
-            if self.is_exposable:
-                return "view"
-            else:
-                return "snapshot"
-        else:
-            return None
-
-    def supports_user_tags(self):
-        return self.get_user_tags_object_type() is not None
-
-    def contains_user_tags(self):
-        return "user_tags" in self._current
-
     @classmethod
     def new(cls, ep, resource_type, **kwargs):
         obj = cls(ep, resource_type, **kwargs)
@@ -509,20 +441,11 @@ class RestObject(RestObjectBase):
         return obj
 
     def save(self, options={}):
-        user_tags_changed = dict()
-        if self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
-            user_tags_changed = self._user_tags_changed
-            for user_tag in self._current["user_tags"]:
-                user_tag._invalidate()
         if hasattr(self, "id"):
             # construct things that changed and run patch
-            self._ep.patch(self, options=options)
+            return self._ep.patch(self, options=options)
         else:
-            self._ep.post(self, options=options)
-        if user_tags_changed:
-            self._ep.patch_object_user_tags(user_tags_changed)
-            self.refresh()
-        return self
+            return self._ep.post(self, options=options)
 
     def delete(self, options={}):
         return self._ep.delete(self, options=options)
@@ -533,60 +456,8 @@ class RestObject(RestObjectBase):
         new_obj = self._ep.get(self._resource_type, self.id, options=options)
         self._update(**new_obj._current)
 
-    def on_user_tags_change(self):
-        self._user_tags_changed = {}
-        self._user_tags_changed["action"] = "set_object_tags"
-        self._user_tags_changed["object_type"] = self.get_user_tags_object_type()
-        self._user_tags_changed["object_name"] = self.name
-        self._user_tags_changed["is_validate_only"] = False
-        self._user_tags_changed["tags"] = []
-        for model_tag in self._current["user_tags"]:
-            model_tag.fill_tag_params(self._user_tags_changed["tags"])
-
-    def get_user_tag(self, tag_key):
-        if not self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
-            raise NotImplementedError
-        for user_tag in self._current["user_tags"]:
-            if user_tag.key == tag_key:
-                return user_tag
-        return None
-
-    def has_user_tag(self, tag_key):
-        if not self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
-            raise NotImplementedError
-        return self.get_user_tag(tag_key) is not None
-
-    def add_user_tag(self, key, value, is_inheritable):
-        if not self.supports_user_tags(): # Must check "supports" rather than "contains" to provide correct error for a new object
-            raise NotImplementedError
-        if not hasattr(self, "id"):
-            raise ValueError("Can't add a user tags to a new, non-stored object. Please store the object first.")
-        self._current["user_tags"].append(ObjectUserModelTag(self, { "key": key, "value": value, "is_inheritable": is_inheritable, "is_automatic": False, "possession_type": None}))
-        self.on_user_tags_change()
-
-    def remove_user_tag(self, tag_key):
-        if not self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
-            raise NotImplementedError
-        self.get_user_tag(tag_key).remove()
-
-    def modify_user_tag(self, tag_key, new_key=None, new_value=None, new_is_inheritable=None):
-        if not self.contains_user_tags(): # Must check "contains" rather than "supports" as could be a new object
-            raise NotImplementedError
-        user_tag = self.get_user_tag(tag_key)
-        if new_key is not None:
-            user_tag.key = new_key
-        if new_value is not None:
-            user_tag.value = new_value
-        if new_is_inheritable is not None:
-            user_tag.is_inheritable = new_is_inheritable
-
     def __setattr__(self, attr, val):
         if not attr.startswith("_"):
-            if attr == "user_tags":
-                if not self.supports_user_tags():
-                    raise NotImplementedError
-                if val is not []:
-                    raise ValueError("Can't set directly user_tags property. Please use add_user_tag method.")
             self._changed[attr] = self._current[attr] = val
             return
         super(RestObject, self).__setattr__(attr, val)
@@ -605,28 +476,24 @@ class RestObject(RestObjectBase):
     def _update(self, **kwargs):
         self._current = dict()
         for k, v in kwargs.items():
-            if k == "user_tags":
-                # This is a taggable object
-                self._current["user_tags"] = []
-                for item in v:
-                    if type(item) is ObjectUserModelTag:
-                        item.replace_taggable_object(self)
-                        self._current["user_tags"].append(item)
-                    else:
-                        self._current["user_tags"].append(ObjectUserModelTag(self, item))
-            elif self._ep.parse_references and isinstance(v, list):
+            if isinstance(v, dict):
+                if self._ep.parse_references and "ref" in v:
+                    self._current[k] = RestObjectProxy(self._ep, v)
+                else:
+                    self._current[k] = RestObject(self._ep, k, **v) # NEW FUNCTIONALITY
+            elif isinstance(v, list):
                 self._current[k] = []
                 for item in v:
-                    if isinstance(item, dict) and "ref" in item:
-                        self._current[k].append(RestObjectProxy(self._ep, item))
-            elif self._ep.parse_references and isinstance(v, dict) and "ref" in v:
-                self._current[k] = RestObjectProxy(self._ep, v)
+                    if isinstance(item, dict):
+                        if self._ep.parse_references and "ref" in item:
+                            self._current[k].append(RestObjectProxy(self._ep, item))
+                        else:
+                            self._current[k].append(RestObject(self._ep, k, **item)) # NEW FUNCTIONALITY
+                    else:
+                        self._current[k].append(item) # NEW FUNCTIONALITY
             else:
                 self._current[k] = v
         self._changed = dict()
-
-        if self.supports_user_tags(): # Can be "contains" either, but logically is better.
-            self._user_tags_changed = dict()
 
     def _get_raw(self, attr):
         return self._current[attr]
