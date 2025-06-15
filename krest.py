@@ -480,7 +480,7 @@ class RestObject(RestObjectBase):
                 if self._ep.parse_references and "ref" in v:
                     self._current[k] = RestObjectProxy(self._ep, v)
                 else:
-                    self._current[k] = RestObject(self._ep, k, **v) # NEW FUNCTIONALITY
+                    self._current[k] = RestObject(self._ep, k, **v)
             elif isinstance(v, list):
                 self._current[k] = []
                 for item in v:
