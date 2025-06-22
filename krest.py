@@ -364,7 +364,7 @@ class EndPoint(object):
                 return self.stream_response_to_file(data, options["fp"])
             return data
 
-        rs = ResultSet(self, resource_type, data, query,options)
+        rs = ResultSet(self, resource_type, data, query, options)
         return rs
 
     def dump_all(self, fp, pretty=False, read_chunk=8192):
@@ -539,8 +539,7 @@ class ResultSet(object):
         self._query = query
         self._ep = ep
         self._current_hit_index = 0
-        timeout = options.get("timeout", None)
-        self._options = {"timeout": timeout} if timeout is not None else {}
+        self._options = options
 
     def delete_all(self):
         for hit in self.hits:
@@ -569,7 +568,7 @@ class ResultSet(object):
         else:
             self._query["__offset"] = self.limit
 
-        rs = self._ep.search(self._resource_type,options=self._options, **self._query)
+        rs = self._ep.search(self._resource_type, options=self._options, **self._query)
         af = self.autofetch
         self.__dict__.update(rs.__dict__)
         self.autofetch = af
