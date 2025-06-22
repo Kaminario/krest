@@ -526,7 +526,7 @@ class ResultSet(object):
     """
     Simple object for working with results set.
     """
-    def __init__(self, ep, resource_type, data, query, options, convert_to_rest_objects=True):
+    def __init__(self, ep, resource_type, data, query, options={}, convert_to_rest_objects=True):
         if convert_to_rest_objects:
             self.hits = [RestObject(ep, resource_type, **hit) for hit in data["hits"]]
         else:
@@ -598,17 +598,17 @@ class BulkRequest(object):
 
     def post(self, options={}):
         data = self._request("POST", options=options)
-        return self._to_resultset(data)
+        return self._to_resultset(data, options)
 
     def patch(self, options={}):
         data = self._request("PATCH", options=options)
-        return self._to_resultset(data)
+        return self._to_resultset(data, options)
 
     def delete(self, options={}):
         self._request("DELETE", options=options)
 
-    def _to_resultset(self, data):
-        return ResultSet(self._ep, self._resource_type, data, query=None)
+    def _to_resultset(self, data, options):
+        return ResultSet(self._ep, self._resource_type, data, query=None, options=options)
 
     def _request(self, method, options={}):
         resource_url = self._ep._resource_url(self._resource_type) + self._suffix
