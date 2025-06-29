@@ -25,6 +25,7 @@ import requests
 from requests.exceptions import ConnectionError, HTTPError, Timeout
 from requests.auth import HTTPBasicAuth, AuthBase
 import time
+import copy
 
 logger = logging.getLogger("krest")
 
@@ -441,6 +442,9 @@ class RestObject(RestObjectBase):
         return obj
 
     def save(self, options={}):
+        for key in self._original_list_props.keys():
+            if self.__getattr__(key) != self._original_list_props[key]:
+                self._changed[key] = self.__getattr__(key)
         if hasattr(self, "id"):
             # construct things that changed and run patch
             return self._ep.patch(self, options=options)
@@ -475,6 +479,7 @@ class RestObject(RestObjectBase):
 
     def _update(self, **kwargs):
         self._current = dict()
+        self._original_list_props = dict()
         for k, v in kwargs.items():
             if isinstance(v, dict):
                 if self._ep.parse_references and "ref" in v:
@@ -483,11 +488,15 @@ class RestObject(RestObjectBase):
                     self._current[k] = RestObject(self._ep, k, **v)
             elif isinstance(v, list):
                 self._current[k] = []
+                non_proxy_list = False
                 for item in v:
                     if isinstance(item, dict) and self._ep.parse_references and "ref" in item:
                         self._current[k].append(RestObjectProxy(self._ep, item))
                     else:
+                        non_proxy_list = True
                         self._current[k].append(item)
+                if non_proxy_list:
+                    self._original_list_props[k] = copy.deepcopy(self._current[k])
             else:
                 self._current[k] = v
         self._changed = dict()
