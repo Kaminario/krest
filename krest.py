@@ -442,8 +442,8 @@ class RestObject(RestObjectBase):
         return obj
 
     def save(self, options={}):
-        for key in self._original_list_props.keys():
-            if self.__getattr__(key) != self._original_list_props[key]:
+        for key in self._original_props.keys():
+            if (key not in self._changed) and self.__getattr__(key) != self._original_props[key]:
                 self._changed[key] = self.__getattr__(key)
         if hasattr(self, "id"):
             # construct things that changed and run patch
@@ -479,7 +479,7 @@ class RestObject(RestObjectBase):
 
     def _update(self, **kwargs):
         self._current = dict()
-        self._original_list_props = dict()
+        self._original_props = dict()
         for k, v in kwargs.items():
             if isinstance(v, dict):
                 if self._ep.parse_references and "ref" in v:
@@ -488,17 +488,14 @@ class RestObject(RestObjectBase):
                     self._current[k] = RestObject(self._ep, k, **v)
             elif isinstance(v, list):
                 self._current[k] = []
-                non_proxy_list = False
                 for item in v:
                     if isinstance(item, dict) and self._ep.parse_references and "ref" in item:
                         self._current[k].append(RestObjectProxy(self._ep, item))
                     else:
-                        non_proxy_list = True
                         self._current[k].append(item)
-                if non_proxy_list:
-                    self._original_list_props[k] = copy.deepcopy(self._current[k])
             else:
                 self._current[k] = v
+            self._original_props[k] = copy.deepcopy(self._current[k])
         self._changed = dict()
 
     def _get_raw(self, attr):
