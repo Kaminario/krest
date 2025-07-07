@@ -495,7 +495,9 @@ class RestObject(RestObjectBase):
                         self._current[k].append(item)
             else:
                 self._current[k] = v
-            self._original_props[k] = copy.deepcopy(self._current[k])
+
+            if not isinstance(self._current[k], RestObjectProxy):
+                self._original_props[k] = copy.deepcopy(self._current[k])
         self._changed = dict()
 
     def _get_raw(self, attr):
