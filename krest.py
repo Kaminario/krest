@@ -25,6 +25,7 @@ import requests
 from requests.exceptions import ConnectionError, HTTPError, Timeout
 from requests.auth import HTTPBasicAuth, AuthBase
 import time
+import copy
 
 logger = logging.getLogger("krest")
 
@@ -262,7 +263,7 @@ class EndPoint(object):
             if rv.content:
                 rv = rv.json()
             elif method != "DELETE":
-                raise KrestProtocolError("Recieved response without content", rv)
+                raise KrestProtocolError("Received response without content", rv)
         logger.info("Returned value is: %s", rv)
         return rv
 
@@ -397,7 +398,6 @@ class RestObjectBase(object):
     def _ref(self):
         return {"ref": self._obj_ref}
 
-
 class RestObjectProxy(RestObjectBase):
     def __init__(self, ep, ref):
         self._ep = ep
@@ -410,7 +410,7 @@ class RestObjectProxy(RestObjectBase):
         return ro
 
     def __eq__(self, other, shallow=None):
-        # "shallow" parameter is supported for compatability -
+        # "shallow" parameter is supported for compatibility -
         # proxies can only be compared in shallow mode
         if not isinstance(other, (RestObject, RestObjectProxy)):
             return False
@@ -442,6 +442,9 @@ class RestObject(RestObjectBase):
         return obj
 
     def save(self, options={}):
+        for key in self._original_props.keys():
+            if (key not in self._changed) and self.__getattr__(key) != self._original_props[key]:
+                self._changed[key] = self.__getattr__(key)
         if hasattr(self, "id"):
             # construct things that changed and run patch
             return self._ep.patch(self, options=options)
@@ -476,16 +479,25 @@ class RestObject(RestObjectBase):
 
     def _update(self, **kwargs):
         self._current = dict()
+        self._original_props = dict()
         for k, v in kwargs.items():
-            if self._ep.parse_references and isinstance(v, list):
+            if isinstance(v, dict):
+                if self._ep.parse_references and "ref" in v:
+                    self._current[k] = RestObjectProxy(self._ep, v)
+                else:
+                    self._current[k] = RestObject(self._ep, k, **v)
+            elif isinstance(v, list):
                 self._current[k] = []
                 for item in v:
-                    if isinstance(item, dict) and "ref" in item:
+                    if isinstance(item, dict) and self._ep.parse_references and "ref" in item:
                         self._current[k].append(RestObjectProxy(self._ep, item))
-            elif self._ep.parse_references and isinstance(v, dict) and "ref" in v:
-                self._current[k] = RestObjectProxy(self._ep, v)
+                    else:
+                        self._current[k].append(item)
             else:
                 self._current[k] = v
+
+            if not isinstance(self._current[k], RestObjectProxy):
+                self._original_props[k] = copy.deepcopy(self._current[k])
         self._changed = dict()
 
     def _get_raw(self, attr):
