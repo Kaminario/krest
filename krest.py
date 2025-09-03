@@ -484,8 +484,11 @@ class RestObject(RestObjectBase):
             if isinstance(v, dict):
                 if self._ep.parse_references and "ref" in v:
                     self._current[k] = RestObjectProxy(self._ep, v)
-                else:
+                # Create RestObject only if 'k' (the attribute name) is a valid resource type
+                elif k in self._ep.resources:
                     self._current[k] = RestObject(self._ep, k, **v)
+                else:
+                    self._current[k] = v
             elif isinstance(v, list):
                 self._current[k] = []
                 for item in v:
